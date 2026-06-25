@@ -113,7 +113,7 @@ function updateSessions(){
   const [us,uc]=usSession(),[kr,kc]=krSession();
   document.getElementById('sess').innerHTML=
     `<span class="ses ${uc}">🇺🇸 ${us}</span><span class="ses ${kc}">🇰🇷 ${kr}</span>`;}
-const pct=n=>n==null?'—':(n>=0?'+':'')+n.toFixed(1)+'%';
+const pct=n=>n==null?'—':(n>=0?'+':'')+n.toFixed(2)+'%';
 const cls=n=>n==null?'':n>=0?'up':'down';
 async function j(u){try{const r=await fetch(u);return await r.json()}catch(e){return null}}
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
