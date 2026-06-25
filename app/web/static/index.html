@@ -255,7 +255,12 @@ function updateHeader(){
   const total=(ST.live_total||0)+(KIST.total||0);
   document.getElementById('total').textContent=amt(total);
   const parts=[];
-  if(ST.daily!=null) parts.push(`오늘 <b class="${cls(ST.daily)}">${pct(ST.daily)}${ST.daily_amt!=null?' ('+samt(ST.daily_amt)+')':''}</b>`);
+  if(ST.daily_amt!=null){  // 전체자산 기준 오늘% (한투는 daily 미제공=오늘 변동 0 간주)
+    const base=total-ST.daily_amt, dp=base>0?ST.daily_amt/base*100:ST.daily;
+    parts.push(`오늘 <b class="${cls(dp)}">${pct(dp)} (${samt(ST.daily_amt)})</b>`);
+  }else if(ST.daily!=null){
+    parts.push(`오늘 <b class="${cls(ST.daily)}">${pct(ST.daily)}</b>`);
+  }
   const tcost=(ST.total_pnl!=null&&ST.live_total)?ST.live_total/(1+ST.total_pnl/100):ST.live_total;
   const kcost=(KIST.rate!=null&&KIST.total)?KIST.total/(1+KIST.rate/100):KIST.total;
   const cost=tcost+kcost;
