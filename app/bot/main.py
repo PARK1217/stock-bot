@@ -63,6 +63,39 @@ def cmd_balance() -> None:
               f"({p.pnl_pct:+.1f}%)")
 
 
+def cmd_balance_all() -> None:
+    """KIS 3계좌(소수점·ISA·연금) 통합잔고. ⚠️소수점은 해외계좌라 별도 API 필요(추후)."""
+    from bot.brokers.kis import KISBroker
+    if settings.broker.lower() != "kis":
+        print("balance-all은 BROKER=kis 전용. (토스는 balance)")
+        return
+    labels = {("63751874", "01"): "소수점주식", ("63776023", "01"): "ISA중개형",
+              ("63776023", "22"): "연금저축"}
+    overseas = {("63751874", "01")}  # 해외계좌(국내 잔고 API 미적용)
+    g_cash = g_eval = 0.0
+    lines = [f"[KIS/{_mode()}] 3계좌 통합잔고"]
+    for cano, prod in settings.kis_accounts:
+        label = labels.get((cano, prod), f"{cano}-{prod}")
+        if (cano, prod) in overseas:
+            lines.append(f"  [{label} {cano}-{prod}] ⚠️해외계좌 — overseas 잔고 API 추후")
+            continue
+        try:
+            b = KISBroker(account=(cano, prod)).get_balance()
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"  [{label}] 조회실패: {e}")
+            continue
+        g_cash += b.cash
+        g_eval += b.total_eval
+        lines.append(f"  [{label} {cano}-{prod}] 현금 {b.cash:,.0f}  "
+                     f"평가 {b.total_eval:,.0f}  {len(b.positions)}종")
+        for p in b.positions:
+            lines.append(f"      {p.symbol} {p.name[:14]} {p.qty:g}주 ({p.pnl_pct:+.1f}%)")
+    lines.append(f"  ═ 국내계좌 합계: 현금 {g_cash:,.0f}  총평가 {g_eval:,.0f} KRW")
+    msg = "\n".join(lines)
+    print(msg)
+    notify(msg)
+
+
 # ---------- 제안 ----------
 def cmd_propose() -> None:
     broker, strategy, risk = _build()
@@ -286,6 +319,7 @@ def broker_label() -> str:
 
 COMMANDS = {
     "balance": cmd_balance,
+    "balance-all": cmd_balance_all,
     "propose": cmd_propose,
     "screen": cmd_screen,
     "accuracy": cmd_accuracy,

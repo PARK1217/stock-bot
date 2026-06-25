@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     groq_model: str = "llama-3.3-70b-versatile"
     groq_base_url: str = "https://api.groq.com/openai/v1"
     mistral_api_key: str = ""             # 폴백 LLM(Groq 장애 대비)
+    mistral_model: str = "mistral-small-latest"
+    mistral_base_url: str = "https://api.mistral.ai/v1"
     anthropic_api_key: str = ""           # (선택) Anthropic 대체
     sentiment_model: str = "claude-haiku-4-5-20251001"
 

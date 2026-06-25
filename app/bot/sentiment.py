@@ -100,16 +100,15 @@ def finbert_scores(texts: list[str]) -> list[tuple[str, float]] | None:
 
 
 # ---------------- Groq (관련성·요약) ----------------
-def _groq_chat(prompt: str, max_tokens: int = 300) -> str | None:
-    if not settings.groq_api_key:
-        return None
-    for attempt in range(4):  # 429/5xx(503 등) 백오프 재시도
+def _openai_chat(base_url: str, key: str, model: str,
+                 prompt: str, max_tokens: int) -> str | None:
+    """OpenAI 호환 chat completions(그록·미스트랄 공용). 429/5xx 백오프."""
+    for attempt in range(3):
         try:
             r = httpx.post(
-                f"{settings.groq_base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {settings.groq_api_key}"},
-                json={"model": settings.groq_model, "max_tokens": max_tokens,
-                      "temperature": 0,
+                f"{base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {key}"},
+                json={"model": model, "max_tokens": max_tokens, "temperature": 0,
                       "messages": [{"role": "user", "content": prompt}]},
                 timeout=30)
             if r.status_code in (429, 500, 502, 503, 504):
@@ -117,20 +116,33 @@ def _groq_chat(prompt: str, max_tokens: int = 300) -> str | None:
                 continue
             r.raise_for_status()
             return r.json()["choices"][0]["message"]["content"]
-        except (httpx.HTTPError, KeyError, IndexError) as e:
-            log.warning("Groq 호출 실패(%d): %s", attempt, e)
+        except (httpx.HTTPError, KeyError, IndexError):
             time.sleep(0.4 * (attempt + 1))
+    return None
+
+
+def _llm_chat(prompt: str, max_tokens: int = 300) -> str | None:
+    """관련성·요약용 LLM. Groq 우선 → 실패 시 Mistral 폴백."""
+    if settings.groq_api_key:
+        out = _openai_chat(settings.groq_base_url, settings.groq_api_key,
+                           settings.groq_model, prompt, max_tokens)
+        if out is not None:
+            return out
+        log.warning("Groq 실패 → Mistral 폴백")
+    if settings.mistral_api_key:
+        return _openai_chat(settings.mistral_base_url, settings.mistral_api_key,
+                            settings.mistral_model, prompt, max_tokens)
     return None
 
 
 def groq_relevant_indices(symbol: str, headlines: list[str]) -> list[int] | None:
     """해당 종목과 관련 있는 헤드라인 인덱스만 반환. 키 없으면 None(필터 안 함)."""
-    if not settings.groq_api_key or not headlines:
+    if not (settings.groq_api_key or settings.mistral_api_key) or not headlines:
         return None
     numbered = "\n".join(f"{i}: {h}" for i, h in enumerate(headlines))
     prompt = (f"종목 {symbol} 와 직접 관련된 헤드라인의 번호만 JSON 배열로 답하라. "
               f"무관하면 제외. 예: [0,3,5]\n{numbered}")
-    txt = _groq_chat(prompt, 120)
+    txt = _llm_chat(prompt, 120)
     if not txt:
         return None
     try:
@@ -141,8 +153,8 @@ def groq_relevant_indices(symbol: str, headlines: list[str]) -> list[int] | None
 
 
 def groq_summary(symbol: str, headlines: list[str]) -> str:
-    if not settings.groq_api_key or not headlines:
+    if not (settings.groq_api_key or settings.mistral_api_key) or not headlines:
         return ""
     joined = "\n".join(f"- {h}" for h in headlines[:10])
-    txt = _groq_chat(f"{symbol} 관련 최근 뉴스를 한국어 한 문장으로 요약하라:\n{joined}", 120)
+    txt = _llm_chat(f"{symbol} 관련 최근 뉴스를 한국어 한 문장으로 요약하라:\n{joined}", 120)
     return (txt or "").strip()[:120]
