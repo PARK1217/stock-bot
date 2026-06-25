@@ -39,7 +39,10 @@
   <h1>📈 stock-bot</h1>
   <span class="badge" id="meta">…</span>
   <span class="live" id="live" title="10초마다 시세 갱신">LIVE</span>
-  <span class="total" id="total">—</span>
+  <span style="margin-left:auto;text-align:right">
+    <span class="total" id="total">—</span><br>
+    <span id="rets" style="font-size:13px"></span>
+  </span>
 </header>
 <div class="wrap">
   <div class="card span2">
@@ -51,6 +54,10 @@
     <h2>추세 스크리너 <span class="mut" id="scn-st">로딩…</span></h2>
     <table><thead><tr><th>종목</th><th>점수</th><th>1M</th><th>3M</th><th></th></tr></thead>
     <tbody id="scn"><tr><td class="empty" colspan="5">계산 중(최초 ~30초)…</td></tr></tbody></table>
+  </div>
+  <div class="card span2">
+    <h2>📰 주요 이슈 요약 (보유 + 추세상위) <span class="mut" id="news-st"></span></h2>
+    <div id="news"><div class="empty">불러오는 중… (최초 다소 걸림)</div></div>
   </div>
   <div class="card span2">
     <h2>🏦 한투 실계좌 (ISA·연금·소수점) <span class="mut" id="kis-st"></span></h2>
@@ -79,11 +86,13 @@ const pct=n=>n==null?'—':(n>=0?'+':'')+n.toFixed(1)+'%';
 const cls=n=>n==null?'':n>=0?'up':'down';
 async function j(u){try{const r=await fetch(u);return await r.json()}catch(e){return null}}
 
-let ST={fx:1,cash:0,pos:[]};
+let ST={fx:1,cash:0,pos:[],daily:null,total_pnl:null,live_total:0};
+let KIST={total:0,rate:null};
 async function loadPortfolio(){
   const d=await j('/api/portfolio'); if(!d)return;
-  ST.fx=d.fx; ST.cash=d.cash; ST.pos=(d.positions||[]).sort((a,b)=>b.value_krw-a.value_krw);
-  document.getElementById('meta').textContent=`${d.broker} · USDKRW ${Math.round(d.fx).toLocaleString()} · 현금 ${won(d.cash)}`;
+  ST.fx=d.fx; ST.cash=d.cash; ST.daily=d.daily_pnl_pct; ST.total_pnl=d.total_pnl_pct;
+  ST.pos=(d.positions||[]).sort((a,b)=>b.value_krw-a.value_krw);
+  document.getElementById('meta').textContent=`토스 · USDKRW ${Math.round(d.fx).toLocaleString()} · 현금 ${won(d.cash)}`;
   renderPortfolio();
 }
 function vkrw(p){return p.qty*p.price*(p.currency==='USD'?ST.fx:1)}
@@ -95,8 +104,19 @@ function renderPortfolio(){
      <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td>
      <td>${won(vkrw(p))}</td></tr>`).join('');
   document.getElementById('pf').innerHTML=rows||'<tr><td class="empty" colspan=5>보유 없음</td></tr>';
-  const tot=(ST.cash||0)+ST.pos.reduce((s,p)=>s+vkrw(p),0);
-  document.getElementById('total').textContent='총 '+won(tot);
+  ST.live_total=(ST.cash||0)+ST.pos.reduce((s,p)=>s+vkrw(p),0);
+  updateHeader();
+}
+function updateHeader(){
+  const total=(ST.live_total||0)+(KIST.total||0);
+  document.getElementById('total').textContent='총 '+won(total);
+  const parts=[];
+  if(ST.daily!=null) parts.push(`오늘 <b class="${cls(ST.daily)}">${pct(ST.daily)}</b>`);
+  const tcost=(ST.total_pnl!=null&&ST.live_total)?ST.live_total/(1+ST.total_pnl/100):ST.live_total;
+  const kcost=(KIST.rate!=null&&KIST.total)?KIST.total/(1+KIST.rate/100):KIST.total;
+  const cost=tcost+kcost;
+  if(cost){const r=(total/cost-1)*100; parts.push(`전체 <b class="${cls(r)}">${pct(r)}</b>`);}
+  document.getElementById('rets').innerHTML=parts.join(' &nbsp;·&nbsp; ');
 }
 async function pollQuotes(){
   if(!ST.pos.length)return;
@@ -117,6 +137,22 @@ async function loadScreen(){
      <td><span class="bar"><i style="width:${Math.max(0,r.score/mx*100)}%"></i></span> ${r.score}</td>
      <td class="${cls(r.ret_1m)}">${pct(r.ret_1m)}</td>
      <td class="${cls(r.ret_3m)}">${pct(r.ret_3m)}</td><td></td></tr>`).join('');
+  window.SCN=d; loadNews();
+}
+async function loadNews(){
+  const holds=(ST.pos||[]).slice(0,6).map(p=>p.symbol);
+  const top=(window.SCN||[]).slice(0,5).map(r=>r.symbol);
+  const syms=[...new Set([...holds,...top])];
+  if(!syms.length)return;
+  document.getElementById('news-st').textContent='로딩…';
+  const d=await j('/api/news?symbols='+syms.join(','));
+  if(!d){document.getElementById('news-st').textContent='실패';return}
+  document.getElementById('news-st').textContent=d.length+'종';
+  document.getElementById('news').innerHTML=d.map(n=>{
+    const c=n.score>0.05?'up':(n.score<-0.05?'down':'mut');
+    return `<div style="padding:7px 14px;border-bottom:1px solid var(--line)">
+      <span class="${c}">●</span> <span class="sym">${n.symbol}</span>
+      <span class="mut" style="font-size:13px"> — ${n.summary||'-'}</span></div>`;}).join('');
 }
 async function loadProposals(){
   const d=await j('/api/proposals'); const b=document.getElementById('prop');
@@ -150,7 +186,9 @@ async function loadPaper(){
 }
 async function loadKis(){
   const d=await j('/api/kis'); if(!d)return;
-  document.getElementById('kis-st').textContent='총 '+won(d.total);
+  KIST.total=d.total; KIST.rate=d.total_pnl_pct; updateHeader();
+  document.getElementById('kis-st').innerHTML='총 '+won(d.total)+
+    (d.total_pnl_pct!=null?` · <span class="${cls(d.total_pnl_pct)}">${pct(d.total_pnl_pct)}</span>`:'');
   const b=document.getElementById('kis');
   b.innerHTML=(d.positions&&d.positions.length)?d.positions.sort((a,b)=>b.value_krw-a.value_krw).map(p=>
     `<tr><td><span class="pill ${p.market==='US'?'al':''}">${p.account}</span> <span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>

@@ -172,6 +172,32 @@ def cmd_screen() -> None:
         notify(msg)
 
 
+def cmd_news_warm() -> None:
+    """뉴스 이슈 요약 미리 캐싱(대시보드 /api/news 키)."""
+    import json
+    import redis
+    from bot import news
+    from bot.screener import DEFAULT_WATCHLIST
+    r = redis.from_url(settings.redis_url)
+    try:
+        syms = [p.symbol for p in get_broker().get_balance().positions][:8]
+    except Exception:  # noqa: BLE001
+        syms = []
+    syms += DEFAULT_WATCHLIST[:6]
+    n = 0
+    for s in dict.fromkeys(syms):
+        try:
+            ns = news.get_sentiment(s, "US")
+            r.set(f"web:news:{s}", json.dumps(
+                {"symbol": s, "score": round(ns.score, 2),
+                 "summary": ns.summary, "sources": ns.sources}, ensure_ascii=False),
+                ex=5 * 3600)
+            n += 1
+        except Exception:  # noqa: BLE001
+            pass
+    log.info("뉴스 요약 캐싱 %d종", n)
+
+
 def _technical_tilt(closes: list[float]) -> float:
     """스크리너 점수를 [-1,1] 드리프트 틸트로 변환."""
     from bot.screener import score_symbol
@@ -320,6 +346,8 @@ def cmd_run() -> None:
     # 반자동: 정해진 시각에 '제안'만 생성(자동 주문 X). 평일 10:00
     sched.add_job(cmd_propose, "cron", day_of_week="mon-fri", hour=10, minute=0)
     sched.add_job(cmd_screen, "cron", day_of_week="mon-fri", hour=9, minute=10)
+    sched.add_job(cmd_news_warm, "cron", day_of_week="mon-fri", hour=9, minute=20)
+    sched.add_job(cmd_news_warm, "cron", day_of_week="mon-fri", hour=23, minute=45)
     sched.add_job(cmd_snapshot, "cron", day_of_week="mon-fri", hour=15, minute=40)
     # 모의 자동매매(KR+US 통합). KR장 3회(09:15·12:30·15:00, 시장가 즉시체결).
     # US장 1회(23:35, 모의 미국 체결지연으로 중복주문 방지 위해 하루 1회).
@@ -340,6 +368,7 @@ COMMANDS = {
     "paper": cmd_paper,
     "propose": cmd_propose,
     "screen": cmd_screen,
+    "news": cmd_news_warm,
     "accuracy": cmd_accuracy,
     "pending": cmd_pending,
     "snapshot": cmd_snapshot,

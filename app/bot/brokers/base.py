@@ -46,6 +46,8 @@ class Balance:
     cash: float                       # 주문가능 현금
     total_eval: float                 # 총평가금액
     positions: list[Position] = field(default_factory=list)
+    daily_pnl_pct: float | None = None   # 오늘 수익률(%)
+    total_pnl_pct: float | None = None   # 전체(누적) 수익률(%)
 
 
 @dataclass

@@ -181,9 +181,16 @@ class TossBroker(BrokerAdapter):
                 currency=it.get("currency", "KRW"),
             ))
 
-        # NOTE: 다중통화면 단순 합산은 부정확. 환율 반영은 TODO.
+        # 토스 overview가 전체·일간 수익률 직접 제공(ratio)
+        def _rate(d):
+            try:
+                return round(float(d) * 100, 2)
+            except (TypeError, ValueError):
+                return None
         total = cash + sum(p.market_value for p in positions)
-        return Balance(cash=cash, total_eval=total, positions=positions)
+        return Balance(cash=cash, total_eval=total, positions=positions,
+                       total_pnl_pct=_rate((result.get("profitLoss") or {}).get("rate")),
+                       daily_pnl_pct=_rate((result.get("dailyProfitLoss") or {}).get("rate")))
 
     # ---------- order ----------
     def place_order(self, symbol: str, side: Side, qty: float,

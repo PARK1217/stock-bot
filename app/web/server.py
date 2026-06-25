@@ -57,6 +57,7 @@ def portfolio(broker: str = Query(default="")):
     total_krw = bal.cash + sum(p.market_value_krw(fx) for p in bal.positions)
     return {
         "broker": b.name, "fx": fx, "cash": bal.cash, "total_krw": total_krw,
+        "daily_pnl_pct": bal.daily_pnl_pct, "total_pnl_pct": bal.total_pnl_pct,
         "positions": [{
             "symbol": p.symbol, "name": p.name, "qty": p.qty,
             "avg_price": p.avg_price, "price": p.current_price,
@@ -64,6 +65,26 @@ def portfolio(broker: str = Query(default="")):
             "value": p.market_value, "value_krw": p.market_value_krw(fx),
         } for p in bal.positions],
     }
+
+
+@app.get("/api/news")
+def news_summaries(symbols: str = Query(default=""), limit: int = 12):
+    """종목별 뉴스 이슈 요약(Groq). 종목당 4시간 캐시."""
+    syms = [s.strip().upper() for s in symbols.split(",") if s.strip()][:limit]
+    from bot import news
+    out = []
+    for s in syms:
+        c = _cache_get(f"web:news:{s}")
+        if c is None:
+            try:
+                ns = news.get_sentiment(s, "US")
+                c = {"symbol": s, "score": round(ns.score, 2),
+                     "summary": ns.summary, "sources": ns.sources}
+            except Exception:  # noqa: BLE001
+                c = {"symbol": s, "score": 0, "summary": "(조회 오류)", "sources": 0}
+            _cache_set(f"web:news:{s}", c, 4 * 3600)
+        out.append(c)
+    return out
 
 
 @app.get("/api/kis")
@@ -95,6 +116,11 @@ def kis_accounts():
                 "name": p.name, "qty": p.qty, "price": p.current_price,
                 "currency": p.currency, "pnl_pct": round(p.pnl_pct, 2),
                 "value_krw": vkrw})
+    # 전체(누적) 수익률 = 평가합 / 매입합 - 1
+    cost = sum(p["value_krw"] / (1 + p["pnl_pct"] / 100)
+               for p in out["positions"] if p["pnl_pct"] > -100)
+    val = sum(p["value_krw"] for p in out["positions"])
+    out["total_pnl_pct"] = round((val / cost - 1) * 100, 2) if cost else None
     _cache_set("web:kis", out, 60)
     return out
 
