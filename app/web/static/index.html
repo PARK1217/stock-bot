@@ -75,6 +75,9 @@
     <h2>🧪 모의 자동매매 (전략 검증) <span class="mut" id="paper-st"></span></h2>
     <table><thead><tr><th>종목</th><th>수량</th><th>현재가</th><th>수익률</th><th>평가</th></tr></thead>
     <tbody id="paper"><tr><td class="empty" colspan="5">—</td></tr></tbody></table>
+    <h2 class="mut" style="margin-top:14px;font-size:.82em">📜 거래내역 <span class="mut" id="paper-trc"></span></h2>
+    <table><thead><tr><th>시각</th><th>구분</th><th>종목</th><th>수량</th></tr></thead>
+    <tbody id="paper-tr"><tr><td class="empty" colspan="4">—</td></tr></tbody></table>
   </div>
   <div class="card">
     <h2>리밸런싱 제안</h2>
@@ -226,6 +229,16 @@ function renderPaper(){
      <td>${(+p.qty).toLocaleString(undefined,{maximumFractionDigits:2})}</td><td>${(+p.price).toLocaleString()}</td>
      <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td><td>${amt(p.value_krw)}</td></tr>`).join('')
     :`<tr><td class="empty" colspan=5>${d.error?'조회 오류':'장중 자동매매 시작 후 채워짐 (현금 '+amt(d.cash)+')'}</td></tr>`;
+  // 거래내역
+  const tb=document.getElementById('paper-tr'), tc=document.getElementById('paper-trc');
+  const tr=d.trades||[]; if(tc)tc.textContent=tr.length?`총 ${tr.length}건`:'';
+  if(tb)tb.innerHTML=tr.length?tr.map(t=>{
+    let ts=t.ts; try{ts=new Date(t.ts.replace(' ','T')+'Z').toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){}
+    const buy=t.side==='buy'; return `<tr><td class="mut">${ts}</td>
+     <td><span class="${buy?'up':'down'}">${buy?'매수':'매도'}</span></td>
+     <td><span class="pill ${t.market==='US'?'al':''}">${t.market}</span> <span class="sym">${t.symbol}</span></td>
+     <td>${(+t.qty).toLocaleString()}</td></tr>`;}).join('')
+    :`<tr><td class="empty" colspan=4>아직 거래 없음</td></tr>`;
 }
 async function loadKis(){
   const d=await j('/api/kis'); if(!d)return;

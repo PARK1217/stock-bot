@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from bot.brokers import get_broker
 from bot.config import settings
 from bot.storage.db import SessionLocal, init_db
-from bot.storage.models import Prediction, Proposal, DailySnapshot, PaperSnapshot
+from bot.storage.models import Prediction, Proposal, DailySnapshot, PaperSnapshot, OrderLog
 
 log = logging.getLogger(__name__)
 app = FastAPI(title="stock-bot API")
@@ -270,6 +270,14 @@ def paper():
         snaps = s.query(PaperSnapshot).order_by(PaperSnapshot.id.desc()).limit(90).all()
         out["history"] = [{"ts": str(x.ts), "total": x.total_eval}
                           for x in reversed(snaps)]
+        # 거래내역(실제 접수된 모의 주문) — 최근 40건
+        trades = (s.query(OrderLog)
+                  .filter(OrderLog.mode == "paper", OrderLog.ok.is_(True))
+                  .order_by(OrderLog.id.desc()).limit(40).all())
+        out["trades"] = [{"ts": str(t.ts), "symbol": t.symbol, "side": t.side,
+                          "qty": t.qty, "price": t.price,
+                          "market": "US" if "us" in (t.broker or "") else "KR"}
+                         for t in trades]
     if out["total"]:
         out["ret_pct"] = round((out["total"] / 500_000_000 - 1) * 100, 2)  # 초기 5억
     _cache_set("web:paper", out, 30)
