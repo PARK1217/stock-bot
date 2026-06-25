@@ -55,14 +55,14 @@ def portfolio(broker: str = Query(default="")):
     fx = b.usdkrw()
     bal = b.get_balance()
     total_krw = bal.cash + sum(p.market_value_krw(fx) for p in bal.positions)
-    # 전체 손익은 보유 종목 기반으로 직접 계산(종목별 손익과 일치). 토스 rate는 기준상이.
+    # 토스 앱과 동일하게 토스 rate 사용. 금액은 rate에 맞춰 도출(토스 amount는 rate와 불일치).
     cost = sum(p.qty * p.avg_price for p in bal.positions)
-    val = sum(p.market_value for p in bal.positions)
+    tp, dp = bal.total_pnl_pct, bal.daily_pnl_pct
     return {
         "broker": b.name, "fx": fx, "cash": bal.cash, "total_krw": total_krw,
-        "daily_pnl_pct": bal.daily_pnl_pct, "total_pnl_pct": round((val / cost - 1) * 100, 2) if cost else None,
-        "daily_pnl_amt_krw": bal.daily_pnl_amt * fx if bal.daily_pnl_amt is not None else None,
-        "total_pnl_amt_krw": round((val - cost) * fx) if cost else None,
+        "daily_pnl_pct": dp, "total_pnl_pct": tp,
+        "daily_pnl_amt_krw": round(total_krw * (dp / 100)) if dp is not None else None,
+        "total_pnl_amt_krw": round(cost * (tp / 100) * fx) if (tp is not None and cost) else None,
         "positions": [{
             "symbol": p.symbol, "name": p.name, "qty": p.qty,
             "avg_price": p.avg_price, "price": p.current_price,
