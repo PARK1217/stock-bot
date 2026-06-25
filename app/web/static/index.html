@@ -132,12 +132,16 @@
     <div id="scn-help" class="help-box" style="display:none">
       <div id="scn-bt" style="padding-bottom:9px;margin-bottom:9px;border-bottom:1px solid var(--line)">
         <span class="k">신뢰도</span> 측정 중…</div>
-      <div><span class="k">점수</span> = 모멘텀(1·3개월 수익률) + 정배열 보너스 + 200일선 이격 − 변동성.
-        <span class="mut">높을수록 ‘꾸준한 우상향’. 막대는 1위 대비 상대 크기.</span></div>
-      <div class="row-h"><span class="tag al">정배열</span> 현재가 &gt; 20일 &gt; 50일 &gt; 200일 이동평균선 순 정렬
-        <span class="mut">— 단·중·장기선이 우상향으로 늘어선 강한 상승추세.</span></div>
+      <div><span class="k">📊 점수</span> = <b>요즘 잘나가는(많이 오른) 순위</b>. 멜론차트처럼 ‘상승세 순위’일 뿐,
+        <span class="mut">‘좋은 회사’라는 뜻은 아니에요.</span></div>
+      <div class="row-h"><span class="k">📶 막대</span> = 상승세 세기(1등 대비 길이). <span class="mut">길수록 최근 많이 올랐다는 표시.</span></div>
+      <div class="row-h"><span class="tag al">정배열</span> 오늘가 &gt; 20일 &gt; 50일 &gt; 200일 평균.
+        <span class="mut">‘계단 잘 밟고 우상향 중’이라는 신호.</span></div>
       <div class="row-h"><span class="k">1M·3M</span> 최근 1개월·3개월 수익률.</div>
-      <div class="row-h"><span class="tag hold">보유</span> 내가 실제 보유 중인 종목.</div>
+      <div class="row-h"><span class="tag hold">보유</span> 내가 가진 종목.</div>
+      <div class="row-h" style="margin-top:7px;padding:8px 10px;background:#2a1f14;border-radius:6px;color:#e0c89a">
+        <b>🙃 주의:</b> 점수 1등을 따라 사면 오히려 손해 보기 쉬워요(고무줄처럼 튕겨 되돌림).
+        <b>매수 신호가 아니라 ‘요즘 핫한 종목’ 온도계</b>로만 보세요.</div>
     </div>
     <div id="scn"><div class="empty">계산 중 (최초 ~30초)…</div></div>
   </div>
@@ -295,7 +299,7 @@ function renderScreen(){
       <div class="row-l"><div class="row-t"><span class="sym">${r.symbol}</span>
         ${h?'<span class="tag hold">보유</span>':''}${r.trend_aligned?'<span class="tag al">정배열</span>':''}</div>
         <div class="barwrap"><span class="bar"><i style="width:${Math.max(0,r.score/mx*100)}%"></i></span>
-          <span class="mut num" style="font-size:11px">score ${r.score}</span></div></div>
+          <span class="mut num" style="font-size:11px">상승세 ${r.score}</span></div></div>
       <div class="row-r"><div class="v2 ${cls(r.ret_1m)} num">1M ${pct(r.ret_1m)}</div>
         <div class="v2 ${cls(r.ret_3m)} num">3M ${pct(r.ret_3m)}</div></div></div>`;}).join('');
 }
@@ -306,22 +310,23 @@ async function loadScreen(){
 }
 function gradeColor(g){return g==='양호'?'var(--up)':g==='보통'?'var(--warn)':g==='역상관'?'var(--down)':'var(--mut)';}
 function btInterp(d){
-  const dir=d.spread>=0?'높았음':'낮았음', mo=Math.round(d.horizon/21);
-  let s=`점수 상위 종목이 약 ${mo}개월 뒤 평균 <b class="${cls(d.spread)}">${(d.spread>=0?'+':'')+d.spread}%p</b> ${dir} `+
-    `<span class="mut">(상위 ${d.high_avg}% vs 하위 ${d.low_avg}%, 방향적중 ${d.hit}%)</span>.`;
-  if(d.ic<-0.03) s+=' → 모멘텀이 단기 <b>평균회귀(되돌림)</b> 경향. <b class="down">추격매수 신호로 부적합</b>, 추세 모니터링용.';
-  else if(Math.abs(d.ic)<0.05) s+=' → 점수와 이후수익 상관이 거의 없음(랜덤 수준). 참고만.';
-  else if(d.ic<0.15) s+=' → 약한 양의 상관. 보조지표로 참고 가능.';
-  else s+=' → 뚜렷한 <b class="up">양의 상관</b>. 점수가 유의미.';
+  const mo=Math.round(d.horizon/21);
+  let s=`점수 <b>높은</b> 종목은 ${mo}개월 뒤 평균 <b class="${cls(d.high_avg)}">${(d.high_avg>=0?'+':'')+d.high_avg}%</b>, `+
+    `점수 <b>낮은</b> 종목은 <b class="${cls(d.low_avg)}">${(d.low_avg>=0?'+':'')+d.low_avg}%</b> 올랐어요.`;
+  if(d.ic<-0.03) s+=' → 점수 높다고 사면 <b class="down">오히려 덜 오름</b>(고무줄처럼 되돌림). <b>추격매수 ❌, 참고만</b>.';
+  else if(Math.abs(d.ic)<0.05) s+=' → 점수와 이후 수익이 <b>거의 무관</b>(찍기 수준). 참고만.';
+  else if(d.ic<0.15) s+=' → <b class="up">약하게나마</b> 점수 높은 게 더 오르는 편. 보조 참고용.';
+  else s+=' → <b class="up">점수 높을수록 더 오르는</b> 편. 점수가 꽤 쓸 만함.';
   return s;
 }
+function btLabel(g){return g==='역상관'?'⚠️ 거꾸로':g==='양호'?'👍 쓸만함':g==='보통'?'🤔 보통':'😐 약함';}
 async function loadBT(){
   const d=await j('/api/screen/backtest'); const gb=document.getElementById('scn-grade'),e=document.getElementById('scn-bt');
   if(!d||d.grade==='데이터부족'){if(gb)gb.textContent='';if(e)e.innerHTML='<span class="k">신뢰도</span> 표본 부족';return;}
-  const col=gradeColor(d.grade), lbl=d.grade==='역상관'?'⚠️역상관':d.grade;
+  const col=gradeColor(d.grade), lbl=btLabel(d.grade);
   if(gb)gb.innerHTML=`<span style="color:${col};font-weight:700">${lbl}</span>`;
-  if(e)e.innerHTML=`<span class="k">신뢰도</span> <b style="color:${col}">${lbl}</b> `+
-    `<span class="mut">IC ${d.ic} · 표본 ${d.n.toLocaleString()}건 (과거 점수 vs 이후 1개월 실수익 백테스트)</span>`+
+  if(e)e.innerHTML=`<span class="k">점수 믿어도 될까?</span> <b style="color:${col}">${lbl}</b> `+
+    `<span class="mut">(과거 ${d.n.toLocaleString()}번 검사 결과)</span>`+
     `<div class="row-h">${btInterp(d)}</div>`;
 }
 
