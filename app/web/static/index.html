@@ -137,10 +137,10 @@ async function loadPaper(){
   const d=await j('/api/paper'); if(!d)return; const st=document.getElementById('paper-st');
   st.innerHTML=`총 ${won(d.total)} `+(d.ret_pct!=null?`<span class="${cls(d.ret_pct)}">수익률 ${pct(d.ret_pct)}</span>`:'(시작 전)');
   const b=document.getElementById('paper');
-  b.innerHTML=(d.positions&&d.positions.length)?d.positions.sort((a,b)=>b.value-a.value).map(p=>
-    `<tr><td><span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>
-     <td>${(+p.qty).toLocaleString()}</td><td>${(+p.price).toLocaleString()}</td>
-     <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td><td>${won(p.value)}</td></tr>`).join('')
+  b.innerHTML=(d.positions&&d.positions.length)?d.positions.sort((a,b)=>b.value_krw-a.value_krw).map(p=>
+    `<tr><td><span class="pill ${p.market==='US'?'al':''}">${p.market}</span> <span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>
+     <td>${(+p.qty).toLocaleString(undefined,{maximumFractionDigits:2})}</td><td>${(+p.price).toLocaleString()}</td>
+     <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td><td>${won(p.value_krw)}</td></tr>`).join('')
     :`<tr><td class="empty" colspan=5>${d.error?'조회 오류':'장중 자동매매 시작 후 채워짐 (현금 '+won(d.cash)+')'}</td></tr>`;
 }
 function loadAll(){loadPortfolio();loadProposals();loadPred();loadPaper();loadScreen();}

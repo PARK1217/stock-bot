@@ -321,8 +321,9 @@ def cmd_run() -> None:
     sched.add_job(cmd_propose, "cron", day_of_week="mon-fri", hour=10, minute=0)
     sched.add_job(cmd_screen, "cron", day_of_week="mon-fri", hour=9, minute=10)
     sched.add_job(cmd_snapshot, "cron", day_of_week="mon-fri", hour=15, minute=40)
-    # 모의 자동매매 — 장중 여러번(시가후·정오·종가전), 평일
-    for h, m in [(9, 15), (12, 30), (15, 0)]:
+    # 모의 자동매매(KR+US 통합). KR장 3회(09:15·12:30·15:00, 시장가 즉시체결).
+    # US장 1회(23:35, 모의 미국 체결지연으로 중복주문 방지 위해 하루 1회).
+    for h, m in [(9, 15), (12, 30), (15, 0), (23, 35)]:
         sched.add_job(cmd_paper, "cron", day_of_week="mon-fri", hour=h, minute=m)
     notify(f"🤖 stock-bot 스케줄러 시작 (반자동, {broker_label()})")
     log.info("scheduler started")

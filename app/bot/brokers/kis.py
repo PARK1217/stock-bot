@@ -195,6 +195,62 @@ class KISBroker(BrokerAdapter):
             positions=positions,
         )
 
+    # ---------- 해외(미국) ----------
+    def get_overseas_balance(self) -> Balance:
+        """해외 체결기준현재잔고. USD 보유 + 총자산(KRW, 통합증거금 기준)."""
+        tr = "VTRP6504R" if self.paper else "CTRP6504R"
+        resp = self._get(
+            "/uapi/overseas-stock/v1/trading/inquire-present-balance",
+            self._headers(tr),
+            {"CANO": self.cano, "ACNT_PRDT_CD": self.prod, "WCRC_FRCR_DVSN_CD": "02",
+             "NATN_CD": "840", "TR_MKET_CD": "00", "INQR_DVSN_CD": "00"})
+        resp.raise_for_status()
+        data = resp.json()
+        positions = []
+        for r in data.get("output1", []) or []:
+            qty = float(r.get("ccld_qty_smtl1") or r.get("cblc_qty13") or 0)
+            if qty <= 0:
+                continue
+            pur = float(r.get("frcr_pchs_amt") or 0)        # USD 매입총액
+            evl = float(r.get("frcr_evlu_amt2") or 0)       # USD 평가총액(결제중 0)
+            avg = pur / qty if qty else 0
+            cur = evl / qty if evl > 0 else avg             # 평가 미반영시 매입가
+            positions.append(Position(
+                symbol=r.get("pdno", ""), name=r.get("prdt_name", ""),
+                qty=qty, avg_price=avg, current_price=cur, currency="USD"))
+        return Balance(cash=0.0, total_eval=0.0, positions=positions)
+
+    def place_overseas_order(self, symbol: str, side: Side, qty: int, price: float,
+                             exchange: str | None = None) -> OrderResult:
+        """해외(미국) 지정가 주문. 거래소코드 자동탐색(NASD/NYSE/AMEX)+캐시."""
+        tr = ("VTTT1002U" if side == Side.BUY else "VTTT1001U") if self.paper \
+            else ("TTTT1002U" if side == Side.BUY else "TTTT1006U")
+        cached = self._redis.get(f"kis:exch:{symbol}")
+        excs = [exchange] if exchange else (
+            [cached.decode()] if cached else ["NASD", "NYSE", "AMEX"])
+        last = "주문 실패"
+        for exc in excs:
+            body = {"CANO": self.cano, "ACNT_PRDT_CD": self.prod, "OVRS_EXCG_CD": exc,
+                    "PDNO": symbol, "ORD_QTY": str(int(qty)),
+                    "OVRS_ORD_UNPR": f"{price:.2f}", "ORD_SVR_DVSN_CD": "0",
+                    "ORD_DVSN": "00"}
+            try:
+                hk = self._hashkey(body)
+                resp = self._client.post("/uapi/overseas-stock/v1/trading/order",
+                                         headers=self._headers(tr, hashkey=hk), json=body)
+                data = resp.json()
+            except (httpx.HTTPError, ValueError) as e:
+                last = str(e)
+                time.sleep(0.4)
+                continue
+            if data.get("rt_cd") == "0":
+                self._redis.set(f"kis:exch:{symbol}", exc, ex=604800)
+                return OrderResult(ok=True, order_id=(data.get("output") or {}).get("ODNO"),
+                                   message=data.get("msg1", ""), raw=data)
+            last = data.get("msg1", "")
+            time.sleep(0.4)
+        return OrderResult(ok=False, message=last)
+
     # ---------- order ----------
     def place_order(self, symbol: str, side: Side, qty: int,
                     price: float | None = None) -> OrderResult:
