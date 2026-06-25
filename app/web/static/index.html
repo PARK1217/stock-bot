@@ -233,7 +233,9 @@ let PST=null;
 async function loadPaper(){const d=await j('/api/paper'); if(!d)return; PST=d; renderPaper();}
 function renderPaper(){
   const d=PST; if(!d)return; const st=document.getElementById('paper-st');
-  st.innerHTML=`총 ${amt(d.total)} `+(d.ret_pct!=null?`<span class="${cls(d.ret_pct)}">수익률 ${pct(d.ret_pct)}</span>`:'(시작 전)');
+  st.innerHTML=`총 ${amt(d.total)} `+(d.ret_pct!=null?`<span class="${cls(d.ret_pct)}">수익률 ${pct(d.ret_pct)}</span>`:'(시작 전)')
+    +(d.invested?` <span class="mut">· 투자 ${amt(d.invested)} · 현금 ${amt(d.cash)}</span>`:'')
+    +` <span class="mut" style="font-size:.85em">(가상 시드 5억)</span>`;
   const b=document.getElementById('paper');
   b.innerHTML=(d.positions&&d.positions.length)?d.positions.slice().sort((a,b)=>b.value_krw-a.value_krw).map(p=>
     `<tr><td><span class="pill ${p.market==='US'?'al':''}">${p.market}</span> <span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>

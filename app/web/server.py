@@ -253,7 +253,6 @@ def paper():
         kr_pnl = sum((p.current_price - p.avg_price) * p.qty for p in kbal.positions)
         us_pnl = sum((p.current_price - p.avg_price) * p.qty for p in obal.positions) * fx
         total = 500_000_000 + kr_pnl + us_pnl    # 초기 5억 + 손익(통합증거금 이중계산 방지)
-        out["cash"] = kbal.cash
         out["total"] = total
         out["positions"] = [{
             "symbol": p.symbol, "name": p.name, "qty": p.qty, "market": "KR",
@@ -264,6 +263,10 @@ def paper():
             "price": p.current_price, "pnl_pct": round(p.pnl_pct, 2),
             "value_krw": p.market_value * fx,
         } for p in obal.positions]
+        # 통합증거금 계좌라 dnca(kbal.cash)는 US 매수해도 5억 그대로 → 부정확.
+        # 가용현금 = 총자산 - 보유평가합 으로 일관 계산(이중표시 방지).
+        out["invested"] = sum(p["value_krw"] for p in out["positions"])
+        out["cash"] = total - out["invested"]
     except Exception as e:  # noqa: BLE001
         out["error"] = str(e)
     with SessionLocal() as s:
