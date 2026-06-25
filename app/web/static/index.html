@@ -24,6 +24,7 @@
   tbody tr:hover{background:#20242d} .up{color:var(--up)} .down{color:var(--down)}
   .sym{font-weight:600} .pill{font-size:11px;padding:1px 6px;border-radius:4px;background:#222834;color:var(--mut)}
   .pill.al{background:#173a2c;color:var(--up)} .empty{padding:18px 14px;color:var(--mut)}
+  .pill.hold{background:#3a2c17;color:#e0b257}
   button{background:#222834;color:var(--fg);border:1px solid var(--line);border-radius:6px;
     padding:4px 10px;cursor:pointer;font-size:12px} button:hover{border-color:var(--accent)}
   .bar{height:5px;background:#2a2f3a;border-radius:3px;overflow:hidden;min-width:46px;display:inline-block;vertical-align:middle}
@@ -144,6 +145,7 @@ function renderPortfolio(){
      <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td>
      <td>${amt(vkrw(p))}</td></tr>`).join('');
   document.getElementById('pf').innerHTML=rows||'<tr><td class="empty" colspan=5>보유 없음</td></tr>';
+  renderScreen();  // 보유 도착 시 스크리너 배지 갱신
   ST.live_total=(ST.cash||0)+ST.pos.reduce((s,p)=>s+vkrw(p),0);
   document.getElementById('pf-st').innerHTML='총 '+amt(ST.live_total)+
     (ST.total_pnl!=null?` · 전체 <span class="${cls(ST.total_pnl)}">${pct(ST.total_pnl)}${ST.total_amt!=null?' ('+samt(ST.total_amt)+')':''}</span>`:'')+
@@ -172,16 +174,25 @@ async function pollQuotes(){
     const r=document.querySelector(`#pf tr[data-sym="${s}"]`);
     if(r){r.classList.add('flash');setTimeout(()=>r.classList.remove('flash'),700);}});}
 }
-async function loadScreen(){
-  const d=await j('/api/screen'); const st=document.getElementById('scn-st');
-  if(!d){st.textContent='실패';return} st.textContent=d.length+'종';
-  const mx=Math.max(...d.map(r=>r.score),1);
+function heldSyms(){  // 실보유 심볼(토스 US + 한투 KR)
+  const s=new Set();
+  (ST.pos||[]).forEach(p=>s.add(p.symbol));
+  ((KIST.data&&KIST.data.positions)||[]).forEach(p=>s.add(p.symbol));
+  return s;
+}
+function renderScreen(){
+  const d=window.SCN; if(!d)return;
+  const mx=Math.max(...d.map(r=>r.score),1), held=heldSyms();
   document.getElementById('scn').innerHTML=d.map(r=>
-    `<tr><td><span class="sym">${r.symbol}</span> ${r.trend_aligned?'<span class="pill al">정배열</span>':''}</td>
+    `<tr${held.has(r.symbol)?' style="background:#23211a"':''}><td><span class="sym">${r.symbol}</span> ${held.has(r.symbol)?'<span class="pill hold">보유</span> ':''}${r.trend_aligned?'<span class="pill al">정배열</span>':''}</td>
      <td><span class="bar"><i style="width:${Math.max(0,r.score/mx*100)}%"></i></span> ${r.score}</td>
      <td class="${cls(r.ret_1m)}">${pct(r.ret_1m)}</td>
      <td class="${cls(r.ret_3m)}">${pct(r.ret_3m)}</td><td></td></tr>`).join('');
-  window.SCN=d; loadNews();
+}
+async function loadScreen(){
+  const d=await j('/api/screen'); const st=document.getElementById('scn-st');
+  if(!d){st.textContent='실패';return} st.textContent=d.length+'종';
+  window.SCN=d; renderScreen(); loadNews();
 }
 async function loadNews(){
   const holds=(ST.pos||[]).slice(0,6).map(p=>p.symbol);
@@ -265,6 +276,7 @@ function renderKis(){
         <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td><td>${amt(p.value_krw)}</td></tr>`;});
   });
   document.getElementById('kis').innerHTML=html||'<tr><td class="empty" colspan=5>보유 없음</td></tr>';
+  renderScreen();  // 한투 보유 도착 시 스크리너 배지 갱신
 }
 function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadScreen();}
 loadAll(); updateSessions();
