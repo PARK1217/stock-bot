@@ -91,11 +91,14 @@ class TossBroker(BrokerAdapter):
         return {**self._auth(), "X-Tossinvest-Account": self._account_seq()}
 
     def _get(self, path: str, params: dict, *, acc: bool = False):
-        """레이트리밋(429) 백오프 재시도 GET."""
-        headers = self._acc_headers() if acc else self._auth()
+        """레이트리밋(429) 백오프 + 토큰만료(401) 자동 재발급 GET."""
         resp = None
         for attempt in range(5):
+            headers = self._acc_headers() if acc else self._auth()
             resp = self._client.get(path, headers=headers, params=params)
+            if resp.status_code == 401 and attempt < 2:  # 토큰 무효 → 캐시삭제 후 재발급
+                self._redis.delete(self._token_key)
+                continue
             if resp.status_code != 429:
                 break
             time.sleep(0.5 * (attempt + 1))
