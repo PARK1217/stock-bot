@@ -52,7 +52,8 @@
 </header>
 <div class="wrap">
   <div class="card span2">
-    <h2>포트폴리오 <button onclick="loadAll()">새로고침</button></h2>
+    <h2>토스 포트폴리오 (미국) <span class="mut" id="pf-st"></span>
+        <button onclick="loadAll()" style="float:right">새로고침</button></h2>
     <table><thead><tr><th>종목</th><th>수량</th><th>현재가</th><th>수익률</th><th>평가</th></tr></thead>
     <tbody id="pf"><tr><td class="empty" colspan="5">불러오는 중…</td></tr></tbody></table>
   </div>
@@ -141,6 +142,9 @@ function renderPortfolio(){
      <td>${amt(vkrw(p))}</td></tr>`).join('');
   document.getElementById('pf').innerHTML=rows||'<tr><td class="empty" colspan=5>보유 없음</td></tr>';
   ST.live_total=(ST.cash||0)+ST.pos.reduce((s,p)=>s+vkrw(p),0);
+  document.getElementById('pf-st').innerHTML='총 '+amt(ST.live_total)+
+    (ST.total_pnl!=null?` · 전체 <span class="${cls(ST.total_pnl)}">${pct(ST.total_pnl)}${ST.total_amt!=null?' ('+samt(ST.total_amt)+')':''}</span>`:'')+
+    (ST.daily!=null?` · 오늘 <span class="${cls(ST.daily)}">${pct(ST.daily)}</span>`:'');
   updateHeader();
 }
 function updateHeader(){
