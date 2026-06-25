@@ -217,7 +217,7 @@ function pnlAmt(vk,pp){return (vk==null||pp==null)?null:vk-vk/(1+pp/100);}  // �
 const pct=n=>n==null?'—':(n>=0?'+':'')+n.toFixed(2)+'%';
 const cls=n=>n==null?'':n>=0?'up':'down';
 const nf=(n,d=2)=>n==null?'—':(+n).toLocaleString(undefined,{maximumFractionDigits:d});
-async function j(u){try{const r=await fetch(u);return await r.json()}catch(e){return null}}
+async function j(u){try{const r=await fetch(u);if(r.status===401){location.reload();return null;}return await r.json()}catch(e){return null}}
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function md(s){s=esc(s);s=s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
   s=s.replace(/^\s*[-*]\s+/gm,'• ').replace(/\n+/g,' ');return s;}
@@ -513,6 +513,7 @@ async function sendChat(){
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({message:msg,history:hist})});
+    if(r.status===401){location.reload();return;}
     const d=await r.json();
     CHAT[CHAT.length-1]={role:'bot',content:d.reply||'(응답 없음)'};
   }catch(e){CHAT[CHAT.length-1]={role:'bot',content:'오류가 발생했어요. 잠시 후 다시 시도해 주세요.'};}
