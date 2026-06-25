@@ -269,6 +269,31 @@ class KISBroker(BrokerAdapter):
                         "ord_prc": float(r.get("ft_ord_unpr3") or 0)}     # 주문단가 USD
         return out
 
+    def overseas_orders(self, start: str, end: str) -> list[dict]:
+        """해외 주문/체결 원장(행 리스트). 매수·매도 전부 KIS 체결내역 그대로.
+        inquire-ccnl(VTTS3035R/TTTS3035R). 최신순. start/end=YYYYMMDD."""
+        tr = "VTTS3035R" if self.paper else "TTTS3035R"
+        resp = self._get(
+            "/uapi/overseas-stock/v1/trading/inquire-ccnl", self._headers(tr),
+            {"CANO": self.cano, "ACNT_PRDT_CD": self.prod, "PDNO": "",
+             "ORD_STRT_DT": start, "ORD_END_DT": end, "SLL_BUY_DVSN": "00",
+             "CCLD_NCCS_DVSN": "00", "OVRS_EXCG_CD": "%", "SORT_SQN": "DS",
+             "ORD_DT": "", "ORD_GNO_BRNO": "", "ODNO": "",
+             "CTX_AREA_NK200": "", "CTX_AREA_FK200": ""})
+        resp.raise_for_status()
+        out = []
+        for r in resp.json().get("output", []) or []:
+            out.append({
+                "dt": (r.get("ord_dt") or "") + (r.get("ord_tmd") or ""),  # YYYYMMDDHHMMSS
+                "symbol": r.get("pdno", ""),
+                "side": "buy" if r.get("sll_buy_dvsn_cd") == "02" else "sell",
+                "ord_qty": float(r.get("ft_ord_qty") or 0),
+                "ccld_qty": float(r.get("ft_ccld_qty") or 0),
+                "nccs": float(r.get("nccs_qty") or 0),
+                "price": float(r.get("ft_ccld_unpr3") or 0),
+                "amt": float(r.get("ft_ccld_amt3") or 0)})
+        return out
+
     def place_overseas_order(self, symbol: str, side: Side, qty: int, price: float,
                              exchange: str | None = None) -> OrderResult:
         """해외(미국) 지정가 주문. 거래소코드 자동탐색(NASD/NYSE/AMEX)+캐시."""

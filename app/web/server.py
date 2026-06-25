@@ -280,38 +280,9 @@ def paper():
     return out
 
 
-def _trade_item(t: OrderLog, fills: dict, fx: float) -> dict:
-    """OrderLog 1건 → 거래내역 항목(주문→체결 상태·체결단가·거래대금)."""
-    mk = "US" if "us" in (t.broker or "") else "KR"
-    item = {"ts": str(t.ts), "symbol": t.symbol, "side": t.side, "qty": t.qty,
-            "market": mk, "filled": None, "fill_price": None, "amount_krw": None}
-    if not t.ok:                                       # 접수 실패=거부
-        msg = t.message or ""
-        item["status"] = "거부"
-        item["note"] = ("혼잡(재시도)" if "초당" in msg else
-                        "장외" if "장시작" in msg or "장종료" in msg else
-                        "서버오류" if "500" in msg or "Server" in msg else
-                        "잔고부족" if "잔고" in msg else (msg[:14] or "실패"))
-        item["filled"] = 0
-    else:
-        oid = int(t.order_id) if (t.order_id or "").isdigit() else None
-        f = fills.get(oid) if oid else None
-        if f is not None:                              # US 체결현황 매칭
-            item["filled"] = f["ccld"]
-            item["status"] = ("체결" if f["ccld"] >= f["ord"] > 0 else
-                              "부분체결" if f["ccld"] > 0 else "미체결")
-            if f["ccld"] > 0:
-                item["fill_price"] = round(f["ccld_prc"], 2)
-                item["amount_krw"] = round(f["ccld_amt"] * fx)
-        elif mk == "KR":                               # KR 시장가=즉시체결
-            item["filled"] = t.qty
-            item["status"] = "체결"
-            if t.price:
-                item["fill_price"] = t.price
-                item["amount_krw"] = round(t.price * t.qty)
-        else:                                          # US인데 조회범위 밖
-            item["status"] = "접수"
-    return item
+def _fmt_dt(s: str) -> str:
+    """ccnl ord_dt+ord_tmd(YYYYMMDDHHMMSS) → 'MM-DD HH:MM'."""
+    return f"{s[4:6]}-{s[6:8]} {s[8:10]}:{s[10:12]}" if len(s) >= 12 else s
 
 
 @app.get("/api/screen/backtest")
@@ -334,31 +305,36 @@ def screen_backtest():
 
 @app.get("/api/paper/trades")
 def paper_trades(page: int = 0, size: int = 8):
-    """모의 거래내역 — 페이징. 주문→실체결 라이프사이클 + 거래대금."""
+    """모의 거래내역 — KIS 실제 체결원장(ccnl) 기반. 매수·매도 전부(자동+수동). 페이징."""
     page = max(0, page); size = min(max(size, 1), 50)
     if (c := _cache_get(f"web:ptr:{page}:{size}")):
         return c
     fx = 1540.0
-    fills = {}
+    ledger = []
     try:
         from bot.brokers.kis import KISBroker
         from bot.brokers.toss import TossBroker
         fx = TossBroker().usdkrw() or 1540.0
-        fills = KISBroker(paper=True).overseas_fills(
-            (datetime.now() - timedelta(days=4)).strftime("%Y%m%d"),
+        ledger = KISBroker(paper=True).overseas_orders(
+            (datetime.now() - timedelta(days=10)).strftime("%Y%m%d"),
             datetime.now().strftime("%Y%m%d"))
     except Exception:  # noqa: BLE001
         pass
-    with SessionLocal() as s:
-        base = s.query(OrderLog).filter(OrderLog.mode == "paper")
-        total = base.count()
-        rows = (base.order_by(OrderLog.id.desc())
-                .offset(page * size).limit(size).all())
-        items = [_trade_item(t, fills, fx) for t in rows]
-    # 거래대금(최근 ccnl 범위 체결분, 매수+매도, ₩)
-    turnover = round(sum((f.get("ccld_amt") or 0) for f in fills.values()) * fx)
-    out = {"items": items, "page": page, "size": size, "total": total,
-           "pages": (total + size - 1) // size if total else 0,
+    ledger.sort(key=lambda r: r["dt"], reverse=True)        # 최신순
+    items = []
+    for r in ledger:
+        ccld, ordq = r["ccld_qty"], r["ord_qty"]
+        items.append({
+            "ts": _fmt_dt(r["dt"]), "symbol": r["symbol"], "side": r["side"],
+            "qty": ordq, "filled": ccld, "market": "US",
+            "status": ("체결" if ccld >= ordq > 0 else
+                       "부분체결" if ccld > 0 else "미체결"),
+            "fill_price": round(r["price"], 2) if ccld > 0 else None,
+            "amount_krw": round(r["amt"] * fx) if ccld > 0 else None})
+    total = len(items)
+    turnover = round(sum((r["amt"] or 0) for r in ledger) * fx)  # 매수+매도 체결 ₩
+    out = {"items": items[page * size:(page + 1) * size], "page": page, "size": size,
+           "total": total, "pages": (total + size - 1) // size if total else 0,
            "turnover_krw": turnover}
     _cache_set(f"web:ptr:{page}:{size}", out, 20)
     return out

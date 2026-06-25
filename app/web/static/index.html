@@ -399,7 +399,7 @@ function renderTrades(){
   tc.innerHTML=d.total?`총 ${d.total}건${d.turnover_krw?' · 거래대금 '+amt(d.turnover_krw):''}`:'';
   const ic={'체결':'✅','부분체결':'◧','미체결':'⏳','거부':'❌','접수':'·'};
   tb.innerHTML=(d.items&&d.items.length)?d.items.map(t=>{
-    let ts=t.ts; try{ts=new Date(t.ts.replace(' ','T')+'Z').toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){}
+    const ts=t.ts;
     const buy=t.side==='buy';
     const qd=(t.filled!=null&&+t.filled!==+t.qty)?`${nf(t.filled,2)}/${nf(t.qty,2)}`:nf(t.qty,2);
     const fp=t.fill_price!=null?` @${nf(t.fill_price)}${t.market==='US'?'$':''}`:'';
