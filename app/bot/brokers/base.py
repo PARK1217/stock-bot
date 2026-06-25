@@ -63,6 +63,10 @@ class BrokerAdapter(ABC):
     def get_price(self, symbol: str) -> float:
         """현재가 조회."""
 
+    def get_prices(self, symbols: list[str]) -> dict[str, float]:
+        """여러 종목 현재가 일괄 조회(기본은 개별 반복, 어댑터서 배치 오버라이드)."""
+        return {s: self.get_price(s) for s in symbols}
+
     @abstractmethod
     def get_balance(self) -> Balance:
         """잔고 + 보유 포지션 조회."""

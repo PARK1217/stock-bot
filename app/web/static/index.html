@@ -29,12 +29,16 @@
   .bar{height:5px;background:#2a2f3a;border-radius:3px;overflow:hidden;min-width:46px;display:inline-block;vertical-align:middle}
   .bar>i{display:block;height:100%;background:var(--accent)}
   .side-buy{color:var(--up)} .side-sell{color:var(--down)}
+  @keyframes fl{from{background:#2b3550}to{background:transparent}} .flash{animation:fl .7s}
+  .live{font-size:11px;color:var(--up)} .live::before{content:"● ";animation:bl 2s infinite}
+  @keyframes bl{50%{opacity:.3}}
 </style>
 </head>
 <body>
 <header>
   <h1>📈 stock-bot</h1>
   <span class="badge" id="meta">…</span>
+  <span class="live" id="live" title="10초마다 시세 갱신">LIVE</span>
   <span class="total" id="total">—</span>
 </header>
 <div class="wrap">
@@ -65,17 +69,34 @@ const pct=n=>n==null?'—':(n>=0?'+':'')+n.toFixed(1)+'%';
 const cls=n=>n==null?'':n>=0?'up':'down';
 async function j(u){try{const r=await fetch(u);return await r.json()}catch(e){return null}}
 
+let ST={fx:1,cash:0,pos:[]};
 async function loadPortfolio(){
   const d=await j('/api/portfolio'); if(!d)return;
+  ST.fx=d.fx; ST.cash=d.cash; ST.pos=(d.positions||[]).sort((a,b)=>b.value_krw-a.value_krw);
   document.getElementById('meta').textContent=`${d.broker} · USDKRW ${Math.round(d.fx).toLocaleString()} · 현금 ${won(d.cash)}`;
-  document.getElementById('total').textContent='총 '+won(d.total_krw);
-  const rows=(d.positions||[]).sort((a,b)=>b.value_krw-a.value_krw).map(p=>
-    `<tr><td><span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>
+  renderPortfolio();
+}
+function vkrw(p){return p.qty*p.price*(p.currency==='USD'?ST.fx:1)}
+function renderPortfolio(){
+  const rows=ST.pos.map(p=>
+    `<tr data-sym="${p.symbol}"><td><span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>
      <td>${(+p.qty).toLocaleString(undefined,{maximumFractionDigits:4})}</td>
      <td>${(+p.price).toLocaleString()} ${p.currency}</td>
      <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td>
-     <td>${won(p.value_krw)}</td></tr>`).join('');
+     <td>${won(vkrw(p))}</td></tr>`).join('');
   document.getElementById('pf').innerHTML=rows||'<tr><td class="empty" colspan=5>보유 없음</td></tr>';
+  const tot=(ST.cash||0)+ST.pos.reduce((s,p)=>s+vkrw(p),0);
+  document.getElementById('total').textContent='총 '+won(tot);
+}
+async function pollQuotes(){
+  if(!ST.pos.length)return;
+  const q=await j('/api/quotes?symbols='+ST.pos.map(p=>p.symbol).join(','));
+  if(!q)return; const chg=new Set();
+  ST.pos.forEach(p=>{const np=q[p.symbol]; if(np&&Math.abs(np-p.price)>1e-9){
+    p.price=np; p.pnl_pct=(np-p.avg_price)/p.avg_price*100; chg.add(p.symbol);}});
+  if(chg.size){renderPortfolio(); chg.forEach(s=>{
+    const r=document.querySelector(`#pf tr[data-sym="${s}"]`);
+    if(r){r.classList.add('flash');setTimeout(()=>r.classList.remove('flash'),700);}});}
 }
 async function loadScreen(){
   const d=await j('/api/screen'); const st=document.getElementById('scn-st');
@@ -108,7 +129,9 @@ async function loadPred(){
     :'<tr><td class="empty" colspan=6>예측 기록 없음 (스케줄 가동 후 누적)</td></tr>';
 }
 function loadAll(){loadPortfolio();loadProposals();loadPred();loadScreen();}
-loadAll(); setInterval(()=>{loadPortfolio();loadProposals();loadPred();},60000);
+loadAll();
+setInterval(pollQuotes,10000);                                   // 10초 라이브 시세
+setInterval(()=>{loadPortfolio();loadProposals();loadPred();},60000);  // 1분 전체
 </script>
 </body>
 </html>

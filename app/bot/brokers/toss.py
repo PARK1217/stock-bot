@@ -121,6 +121,15 @@ class TossBroker(BrokerAdapter):
             return 0.0
         return float(result[0].get("lastPrice") or 0)
 
+    def get_prices(self, symbols: list[str]) -> dict[str, float]:
+        """여러 종목 현재가 일괄(토스 /prices는 콤마 최대200). 1회 호출."""
+        if not symbols:
+            return {}
+        resp = self._get("/api/v1/prices", {"symbols": ",".join(symbols[:200])})
+        resp.raise_for_status()
+        return {r.get("symbol"): float(r.get("lastPrice") or 0)
+                for r in resp.json().get("result", [])}
+
     def get_stock_info(self, symbols: list[str]) -> list[dict]:
         """종목 기본정보(securityType·market·leverageFactor 등). 계좌 가능여부 판정용."""
         resp = self._get("/api/v1/stocks", {"symbols": ",".join(symbols[:200])})

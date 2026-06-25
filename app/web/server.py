@@ -66,6 +66,20 @@ def portfolio(broker: str = Query(default="")):
     }
 
 
+@app.get("/api/quotes")
+def quotes(symbols: str = Query(default="")):
+    """보유종목 현재가 일괄(1회 호출). 5초 캐시. 대시보드 라이브 갱신용."""
+    syms = [s.strip() for s in symbols.split(",") if s.strip()]
+    if not syms:
+        return {}
+    key = "web:quotes:" + ",".join(sorted(syms))
+    if c := _cache_get(key):
+        return c
+    out = get_broker().get_prices(syms)
+    _cache_set(key, out, 5)
+    return out
+
+
 # ---------------- 스크리너 (캐시 1h) ----------------
 @app.get("/api/screen")
 def screen(refresh: bool = False):
