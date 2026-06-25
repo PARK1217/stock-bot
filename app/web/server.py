@@ -245,6 +245,7 @@ def paper():
     from bot.brokers.kis import KISBroker
     from bot.brokers.toss import TossBroker
     out = {"cash": 0, "total": 0, "positions": [], "history": [], "ret_pct": None}
+    fx = 1540.0
     try:
         kis = KISBroker(paper=True)
         fx = TossBroker().usdkrw() or 1540.0
@@ -290,7 +291,8 @@ def paper():
         for t in rows:
             mk = "US" if "us" in (t.broker or "") else "KR"
             item = {"ts": str(t.ts), "symbol": t.symbol, "side": t.side,
-                    "qty": t.qty, "market": mk, "filled": None}
+                    "qty": t.qty, "market": mk, "filled": None,
+                    "fill_price": None, "amount_krw": None}
             if not t.ok:                                   # 접수 실패=거부
                 msg = t.message or ""
                 item["status"] = "거부"
@@ -306,13 +308,21 @@ def paper():
                     item["filled"] = f["ccld"]
                     item["status"] = ("체결" if f["ccld"] >= f["ord"] > 0 else
                                       "부분체결" if f["ccld"] > 0 else "미체결")
+                    if f["ccld"] > 0:                       # 실체결 단가·거래대금
+                        item["fill_price"] = round(f["ccld_prc"], 2)
+                        item["amount_krw"] = round(f["ccld_amt"] * fx)
                 elif mk == "KR":                           # KR 시장가=즉시체결
                     item["filled"] = t.qty
                     item["status"] = "체결"
+                    if t.price:                             # KR은 OrderLog.price(있으면)
+                        item["fill_price"] = t.price
+                        item["amount_krw"] = round(t.price * t.qty)
                 else:                                      # US인데 조회범위 밖
                     item["status"] = "접수"
             trades.append(item)
         out["trades"] = trades
+        # 총 거래대금(체결된 매수+매도 절대금액 합, ₩)
+        out["turnover_krw"] = round(sum(x["amount_krw"] or 0 for x in trades))
     if out["total"]:
         out["ret_pct"] = round((out["total"] / 500_000_000 - 1) * 100, 2)  # 초기 5억
     _cache_set("web:paper", out, 30)

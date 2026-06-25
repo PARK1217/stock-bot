@@ -77,8 +77,8 @@
     <table><thead><tr><th>종목</th><th>수량</th><th>현재가</th><th>수익률</th><th>평가</th></tr></thead>
     <tbody id="paper"><tr><td class="empty" colspan="5">—</td></tr></tbody></table>
     <h2 class="mut" style="margin-top:14px;font-size:.82em">📜 거래내역 <span class="mut" id="paper-trc"></span></h2>
-    <table><thead><tr><th>시각</th><th>구분</th><th>종목</th><th>체결/주문</th><th>상태</th></tr></thead>
-    <tbody id="paper-tr"><tr><td class="empty" colspan="5">—</td></tr></tbody></table>
+    <table><thead><tr><th>시각</th><th>구분</th><th>종목</th><th>체결/주문</th><th>체결가</th><th>거래대금</th><th>상태</th></tr></thead>
+    <tbody id="paper-tr"><tr><td class="empty" colspan="7">—</td></tr></tbody></table>
   </div>
   <div class="card">
     <h2>리밸런싱 제안</h2>
@@ -244,19 +244,21 @@ function renderPaper(){
     :`<tr><td class="empty" colspan=5>${d.error?'조회 오류':'장중 자동매매 시작 후 채워짐 (현금 '+amt(d.cash)+')'}</td></tr>`;
   // 거래내역
   const tb=document.getElementById('paper-tr'), tc=document.getElementById('paper-trc');
-  const tr=d.trades||[]; if(tc)tc.textContent=tr.length?`총 ${tr.length}건`:'';
+  const tr=d.trades||[]; if(tc)tc.textContent=tr.length?`총 ${tr.length}건${d.turnover_krw?' · 거래대금 '+amt(d.turnover_krw):''}`:'';
   if(tb)tb.innerHTML=tr.length?tr.map(t=>{
     let ts=t.ts; try{ts=new Date(t.ts.replace(' ','T')+'Z').toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){}
     const buy=t.side==='buy';
     const ic={'체결':'✅','부분체결':'◧','미체결':'⏳','거부':'❌','접수':'·'}[t.status]||'';
     const stl=t.status==='체결'?'style="color:var(--up)"':t.status==='거부'?'style="color:var(--down)"':t.status==='부분체결'?'style="color:#e0b257"':'class="mut"';
     const qd=(t.filled!=null&&+t.filled!==+t.qty)?`${(+t.filled).toLocaleString()}/${(+t.qty).toLocaleString()}`:(+t.qty).toLocaleString();
+    const fp=t.fill_price!=null?`${(+t.fill_price).toLocaleString()}${t.market==='US'?'$':''}`:'<span class="mut">—</span>';
+    const fa=t.amount_krw!=null?amt(t.amount_krw):'<span class="mut">—</span>';
     return `<tr><td class="mut">${ts}</td>
      <td><span class="${buy?'up':'down'}">${buy?'매수':'매도'}</span></td>
      <td><span class="pill ${t.market==='US'?'al':''}">${t.market}</span> <span class="sym">${t.symbol}</span></td>
-     <td>${qd}</td>
+     <td>${qd}</td><td>${fp}</td><td>${fa}</td>
      <td ${stl}>${ic} ${t.status}${t.note?` <span class="mut" style="font-size:.85em">(${t.note})</span>`:''}</td></tr>`;}).join('')
-    :`<tr><td class="empty" colspan=5>아직 거래 없음</td></tr>`;
+    :`<tr><td class="empty" colspan=7>아직 거래 없음</td></tr>`;
 }
 async function loadKis(){
   const d=await j('/api/kis'); if(!d)return;

@@ -247,7 +247,10 @@ class KISBroker(BrokerAdapter):
                 continue
             out[oid] = {"ord": float(r.get("ft_ord_qty") or r.get("ord_qty") or 0),
                         "ccld": float(r.get("ft_ccld_qty") or 0),
-                        "nccs": float(r.get("nccs_qty") or 0)}
+                        "nccs": float(r.get("nccs_qty") or 0),
+                        "ccld_prc": float(r.get("ft_ccld_unpr3") or 0),   # 체결단가 USD
+                        "ccld_amt": float(r.get("ft_ccld_amt3") or 0),    # 체결금액 USD
+                        "ord_prc": float(r.get("ft_ord_unpr3") or 0)}     # 주문단가 USD
         return out
 
     def place_overseas_order(self, symbol: str, side: Side, qty: int, price: float,
