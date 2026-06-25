@@ -348,6 +348,76 @@ def snapshots(limit: int = 60):
                 for x in reversed(rows)]
 
 
+def _chat_context() -> str:
+    """챗봇 근거 데이터 — 현재 보유·스크리너·신뢰도·예측·계좌제약 요약."""
+    L = []
+    try:
+        p = portfolio()
+        toss_tot = (p.get("cash", 0) or 0) + sum(x["value_krw"] for x in p.get("positions", []))
+        L.append(f"[토스 실계좌(미국) 총 {round(toss_tot):,}원, 현금 {round(p.get('cash',0)):,}원, "
+                 f"오늘 {p.get('daily_pnl_pct')}% / 전체 {p.get('total_pnl_pct')}%]")
+        for x in sorted(p.get("positions", []), key=lambda z: -z["value_krw"])[:15]:
+            L.append(f"  - {x['symbol']} {x['qty']:g}주 수익률 {x['pnl_pct']}% 평가 {round(x['value_krw']):,}원")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        k = kis_accounts()
+        L.append(f"[한투 실계좌 총 {round(k.get('total',0)):,}원, 전체 {k.get('total_pnl_pct')}%]")
+        for x in k.get("positions", []):
+            L.append(f"  - [{x['account']}] {x['symbol']} {x['name']} {x['qty']:g}주 {x['pnl_pct']}%")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        sc = screen()[:8]
+        L.append("[추세 스크리너 상위(점수=최근 상승세 순위, 매수신호 아님)]")
+        for r in sc:
+            L.append(f"  - {r['symbol']} 점수 {r['score']}"
+                     f"{' 정배열' if r['trend_aligned'] else ''} (1M {r['ret_1m']}% 3M {r['ret_3m']}%)")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        bt = screen_backtest()
+        if bt.get("ic") is not None:
+            L.append(f"[★스크리너 신뢰도: {bt['grade']} (IC {bt['ic']}). 점수 높은 종목 1개월 뒤 "
+                     f"평균 {bt['high_avg']}% vs 점수 낮은 종목 {bt['low_avg']}%. "
+                     f"이 배당/인컴 ETF군은 점수 높을수록 오히려 덜 오르는 평균회귀 경향 → 점수 추격매수 부적합]")
+    except Exception:  # noqa: BLE001
+        pass
+    L.append("[계좌 매매제약] 연금저축=국내상장 ETF/ETN·비레버리지만(해외상장·개별주·레버리지 불가). "
+             "ISA중개형=국내상장 개별주/ETF(해외상장 직접불가, 순이익500만 비과세). 소수점=해외포함 자유. "
+             "토스(미국)=현금 거의 없어 신규매수 여력 적음. 교체는 같은 계좌 안에서만(계좌간 이동 시 연금 페널티·ISA혜택 손실).")
+    return "\n".join(L)
+
+
+@app.post("/api/chat")
+def chat(body: dict):
+    """투자 분석 챗봇 — 현재 데이터를 근거로 Groq가 답변(참고용, 결정은 사용자)."""
+    msg = (body.get("message") or "").strip()
+    if not msg:
+        return {"reply": "질문을 입력해 주세요."}
+    history = body.get("history") or []
+    ctx = _chat_context()
+    convo = ""
+    for h in history[-6:]:
+        who = "사용자" if h.get("role") == "user" else "분석봇"
+        convo += f"\n{who}: {h.get('content','')}"
+    prompt = (
+        "너는 'stock-bot'의 한국어 투자 분석 어시스턴트다. 아래 [현재 데이터]만을 근거로 "
+        "사용자의 실제 포트폴리오를 분석한다. 규칙:\n"
+        "1) 매수/매도 의견은 반드시 데이터 근거와 함께. 데이터에 없는 사실은 지어내지 말고 모른다고 한다.\n"
+        "2) 스크리너 점수는 매수신호가 아님(신뢰도 참고). 계좌 매매제약을 꼭 반영.\n"
+        "3) 단정/보장 금지. '참고이며 최종 결정과 책임은 본인'임을 의식하되 매 답변에 길게 면책 달지 말 것.\n"
+        "4) 간결하게, 핵심 위주 불릿으로. 한국어.\n\n"
+        f"[현재 데이터]\n{ctx}\n\n[대화]{convo}\n사용자: {msg}\n분석봇:")
+    try:
+        from bot.sentiment import _llm_chat
+        reply = _llm_chat(prompt, max_tokens=900)
+    except Exception as e:  # noqa: BLE001
+        reply = None
+        log.warning("chat 실패: %s", e)
+    return {"reply": reply or "분석에 실패했어요. 잠시 후 다시 시도해 주세요."}
+
+
 # ---------------- 정적 프론트(React 빌드) ----------------
 _STATIC = Path(__file__).resolve().parent / "static"
 if (_STATIC / "assets").exists():

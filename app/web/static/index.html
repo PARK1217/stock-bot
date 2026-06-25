@@ -96,6 +96,19 @@
   .help-box{padding:11px 14px;border-bottom:1px solid var(--line);font-size:12px;line-height:1.65;
     color:#b8bfca;background:#15181e}
   .help-box .k{color:var(--fg);font-weight:600} .help-box .row-h{margin-top:5px}
+  .chat-msgs{max-height:360px;overflow-y:auto}
+  .chat-m{padding:9px 14px;font-size:13.5px;line-height:1.65;border-bottom:1px solid var(--line)}
+  .chat-m .who{font-size:11px;color:var(--mut);display:block;margin-bottom:3px}
+  .chat-m.b{background:#15181e;color:#cdd3dd} .chat-m.u{color:var(--fg)}
+  .chat-m code{background:#222834;padding:1px 5px;border-radius:4px;font-size:12px}
+  .chat-chips{display:flex;gap:6px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px solid var(--line)}
+  .chat-chip{background:#222834;border:1px solid var(--line);color:var(--mut);border-radius:14px;
+    padding:5px 11px;font-size:11.5px;cursor:pointer} .chat-chip:active{transform:scale(.95)}
+  .chat-input{display:flex;gap:8px;padding:10px 14px}
+  .chat-input input{flex:1;min-width:0;background:#11141a;border:1px solid var(--line);color:var(--fg);
+    border-radius:8px;padding:9px 12px;font-size:14px}
+  .chat-input button{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:0 18px;
+    font-weight:600;cursor:pointer;font-size:13.5px} .chat-input button:disabled{opacity:.5}
 </style>
 </head>
 <body>
@@ -122,6 +135,17 @@
     <h2>💵 토스 포트폴리오 <span class="mut" style="font-weight:400">(미국)</span>
         <span class="sub" id="pf-st"></span></h2>
     <div id="pf"><div class="empty">불러오는 중…</div></div>
+  </div>
+
+  <div class="card span2">
+    <h2>💬 분석 챗봇 <span class="mut" style="font-weight:400;font-size:11.5px">보유·스크리너 근거 · 참고용</span></h2>
+    <div id="chat-msgs" class="chat-msgs"></div>
+    <div class="chat-chips" id="chat-chips"></div>
+    <div class="chat-input">
+      <input id="chat-in" placeholder="예: 지금 뭘 팔고 뭘 사면 좋을까?" autocomplete="off"
+        onkeydown="if(event.key==='Enter')sendChat()">
+      <button id="chat-send" onclick="sendChat()">전송</button>
+    </div>
   </div>
 
   <div class="card">
@@ -464,6 +488,37 @@ function renderKis(){
 }
 
 // ---------- 부팅 ----------
+// ---------- 분석 챗봇 ----------
+let CHAT=[];
+const CHIPS=['지금 뭘 팔고 뭘 사면 좋을까?','내 포트폴리오 분석해줘','집중도·리스크 점검해줘','스크리너 상위 종목 사도 돼?'];
+function mdChat(s){s=esc(s);
+  s=s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
+  s=s.replace(/^\s*[-*]\s+/gm,'• ').replace(/\n/g,'<br>');return s;}
+function initChips(){document.getElementById('chat-chips').innerHTML=
+  CHIPS.map(c=>`<span class="chat-chip" onclick="askChip(this)">${c}</span>`).join('');}
+function askChip(el){document.getElementById('chat-in').value=el.textContent;sendChat();}
+function renderChat(){
+  const b=document.getElementById('chat-msgs'); if(!b)return;
+  b.innerHTML=CHAT.length?CHAT.map(m=>
+    `<div class="chat-m ${m.role==='user'?'u':'b'}"><span class="who">${m.role==='user'?'🙋 나':'🤖 분석봇'}</span>${m.role==='user'?esc(m.content):mdChat(m.content)}</div>`).join('')
+    :'<div class="empty">보유·스크리너·신뢰도를 근거로 분석해드려요. 아래 예시를 눌러보세요 ↓</div>';
+  b.scrollTop=b.scrollHeight;
+}
+async function sendChat(){
+  const inp=document.getElementById('chat-in'),btn=document.getElementById('chat-send');
+  const msg=inp.value.trim(); if(!msg)return;
+  const hist=CHAT.slice();
+  CHAT.push({role:'user',content:msg}); CHAT.push({role:'bot',content:'…분석 중'});
+  inp.value=''; btn.disabled=true; renderChat();
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:msg,history:hist})});
+    const d=await r.json();
+    CHAT[CHAT.length-1]={role:'bot',content:d.reply||'(응답 없음)'};
+  }catch(e){CHAT[CHAT.length-1]={role:'bot',content:'오류가 발생했어요. 잠시 후 다시 시도해 주세요.'};}
+  btn.disabled=false; renderChat();
+}
+initChips(); renderChat();
 function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(0);loadScreen();loadBT();}
 loadAll(); updateSessions();
 setInterval(updateSessions,30000);
