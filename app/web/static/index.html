@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stock-bot</title>
+<style>
+  :root{--bg:#0f1115;--card:#1a1d24;--line:#2a2f3a;--fg:#e6e9ef;--mut:#8b93a3;
+        --up:#27c281;--down:#ff5c6c;--accent:#4c8dff;--warn:#ffb454;}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px}
+  header{display:flex;align-items:baseline;gap:16px;padding:16px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  header h1{font-size:18px;margin:0} .mut{color:var(--mut)} .badge{background:var(--card);
+    border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:12px}
+  .total{font-size:22px;font-weight:700;margin-left:auto}
+  .wrap{padding:16px 20px;display:grid;gap:16px;grid-template-columns:1fr;max-width:1100px;margin:0 auto}
+  @media(min-width:900px){.wrap{grid-template-columns:1fr 1fr}.span2{grid-column:1/-1}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .card h2{font-size:14px;margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:center}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  th,td{padding:7px 14px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+  th:first-child,td:first-child{text-align:left} th{color:var(--mut);font-weight:500;font-size:12px}
+  tbody tr:hover{background:#20242d} .up{color:var(--up)} .down{color:var(--down)}
+  .sym{font-weight:600} .pill{font-size:11px;padding:1px 6px;border-radius:4px;background:#222834;color:var(--mut)}
+  .pill.al{background:#173a2c;color:var(--up)} .empty{padding:18px 14px;color:var(--mut)}
+  button{background:#222834;color:var(--fg);border:1px solid var(--line);border-radius:6px;
+    padding:4px 10px;cursor:pointer;font-size:12px} button:hover{border-color:var(--accent)}
+  .bar{height:5px;background:#2a2f3a;border-radius:3px;overflow:hidden;min-width:46px;display:inline-block;vertical-align:middle}
+  .bar>i{display:block;height:100%;background:var(--accent)}
+  .side-buy{color:var(--up)} .side-sell{color:var(--down)}
+</style>
+</head>
+<body>
+<header>
+  <h1>📈 stock-bot</h1>
+  <span class="badge" id="meta">…</span>
+  <span class="total" id="total">—</span>
+</header>
+<div class="wrap">
+  <div class="card span2">
+    <h2>포트폴리오 <button onclick="loadAll()">새로고침</button></h2>
+    <table><thead><tr><th>종목</th><th>수량</th><th>현재가</th><th>수익률</th><th>평가(₩)</th></tr></thead>
+    <tbody id="pf"><tr><td class="empty" colspan="5">불러오는 중…</td></tr></tbody></table>
+  </div>
+  <div class="card">
+    <h2>추세 스크리너 <span class="mut" id="scn-st">로딩…</span></h2>
+    <table><thead><tr><th>종목</th><th>점수</th><th>1M</th><th>3M</th><th></th></tr></thead>
+    <tbody id="scn"><tr><td class="empty" colspan="5">계산 중(최초 ~30초)…</td></tr></tbody></table>
+  </div>
+  <div class="card">
+    <h2>리밸런싱 제안</h2>
+    <table><thead><tr><th>종목</th><th>방향</th><th>수량</th><th>사유</th></tr></thead>
+    <tbody id="prop"><tr><td class="empty" colspan="4">—</td></tr></tbody></table>
+  </div>
+  <div class="card span2">
+    <h2>예측 기록 <span class="mut" id="acc"></span></h2>
+    <table><thead><tr><th>종목</th><th>기준가</th><th>상승확률</th><th>기대수익</th><th>상태</th><th>실제</th></tr></thead>
+    <tbody id="pred"><tr><td class="empty" colspan="6">—</td></tr></tbody></table>
+  </div>
+</div>
+<script>
+const won=n=>n==null?'—':Math.round(n).toLocaleString()+'₩';
+const pct=n=>n==null?'—':(n>=0?'+':'')+n.toFixed(1)+'%';
+const cls=n=>n==null?'':n>=0?'up':'down';
+async function j(u){try{const r=await fetch(u);return await r.json()}catch(e){return null}}
+
+async function loadPortfolio(){
+  const d=await j('/api/portfolio'); if(!d)return;
+  document.getElementById('meta').textContent=`${d.broker} · USDKRW ${Math.round(d.fx).toLocaleString()} · 현금 ${won(d.cash)}`;
+  document.getElementById('total').textContent='총 '+won(d.total_krw);
+  const rows=(d.positions||[]).sort((a,b)=>b.value_krw-a.value_krw).map(p=>
+    `<tr><td><span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>
+     <td>${(+p.qty).toLocaleString(undefined,{maximumFractionDigits:4})}</td>
+     <td>${(+p.price).toLocaleString()} ${p.currency}</td>
+     <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td>
+     <td>${won(p.value_krw)}</td></tr>`).join('');
+  document.getElementById('pf').innerHTML=rows||'<tr><td class="empty" colspan=5>보유 없음</td></tr>';
+}
+async function loadScreen(){
+  const d=await j('/api/screen'); const st=document.getElementById('scn-st');
+  if(!d){st.textContent='실패';return} st.textContent=d.length+'종';
+  const mx=Math.max(...d.map(r=>r.score),1);
+  document.getElementById('scn').innerHTML=d.slice(0,12).map(r=>
+    `<tr><td><span class="sym">${r.symbol}</span> ${r.trend_aligned?'<span class="pill al">정배열</span>':''}</td>
+     <td><span class="bar"><i style="width:${Math.max(0,r.score/mx*100)}%"></i></span> ${r.score}</td>
+     <td class="${cls(r.ret_1m)}">${pct(r.ret_1m)}</td>
+     <td class="${cls(r.ret_3m)}">${pct(r.ret_3m)}</td><td></td></tr>`).join('');
+}
+async function loadProposals(){
+  const d=await j('/api/proposals'); const b=document.getElementById('prop');
+  const open=(d||[]).filter(p=>p.status==='pending');
+  b.innerHTML=open.length?open.map(p=>
+    `<tr><td class="sym">${p.symbol}</td><td class="side-${p.side}">${p.side.toUpperCase()}</td>
+     <td>${(+p.qty).toLocaleString(undefined,{maximumFractionDigits:4})}</td>
+     <td class="mut">${p.reason||''}</td></tr>`).join('')
+    :'<tr><td class="empty" colspan=4>대기 중 제안 없음</td></tr>';
+}
+async function loadPred(){
+  const [d,a]=await Promise.all([j('/api/predictions'),j('/api/accuracy')]);
+  if(a&&a.evaluated)document.getElementById('acc').textContent=
+    `· 방향적중 ${Math.round(a.dir_acc*100)}% / 범위 ${Math.round(a.band_acc*100)}% (n=${a.evaluated})`;
+  const b=document.getElementById('pred');
+  b.innerHTML=(d&&d.length)?d.slice(0,12).map(p=>
+    `<tr><td class="sym">${p.symbol}</td><td>${(+p.base_price).toLocaleString()}</td>
+     <td>${Math.round(p.prob_up*100)}%</td><td class="${cls(p.exp_return)}">${pct(p.exp_return)}</td>
+     <td>${p.status}</td><td class="${cls(p.actual_return)}">${p.actual_return!=null?pct(p.actual_return):'—'}</td></tr>`).join('')
+    :'<tr><td class="empty" colspan=6>예측 기록 없음 (스케줄 가동 후 누적)</td></tr>';
+}
+function loadAll(){loadPortfolio();loadProposals();loadPred();loadScreen();}
+loadAll(); setInterval(()=>{loadPortfolio();loadProposals();loadPred();},60000);
+</script>
+</body>
+</html>

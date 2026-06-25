@@ -38,6 +38,21 @@ services:
     # 기본은 스케줄러 상주 모드. 수동 실행 시: docker compose run --rm bot python -m bot.main <command>
     command: ["python", "-m", "bot.main", "run"]
 
+  web:
+    build: ./app
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./app:/app
+    ports:
+      - "8000:8000"   # 대시보드 API (LXC IP:8000). 집 네트워크/터널에서 접속
+    command: ["uvicorn", "web.server:app", "--host", "0.0.0.0", "--port", "8000"]
+
 volumes:
   pgdata:
   redisdata:
