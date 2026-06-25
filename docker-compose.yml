@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-stockbot}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: ${DB_NAME:-stockbot}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # 호스트 포트 미노출(내부 전용) — OCI의 noa-hub-postgres(5432)와 충돌 방지.
+    # 로컬 테스트용 노출은 docker-compose.override.yml 에서.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-stockbot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+
+  bot:
+    build: ./app
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./app:/app          # 개발 중 코드 즉시 반영 (운영 시 제거 권장)
+      - ./logs:/app/logs
+    # 기본은 스케줄러 상주 모드. 수동 실행 시: docker compose run --rm bot python -m bot.main <command>
+    command: ["python", "-m", "bot.main", "run"]
+
+volumes:
+  pgdata:
+  redisdata:

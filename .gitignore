@@ -1,0 +1,14 @@
+.env
+logs/
+__pycache__/
+*.pyc
+.venv/
+*.token
+# 로컬 전용·아티팩트 (서버/레포에 불필요)
+docker-compose.override.yml
+importtime.log
+scripts/toss_openapi.json
+*.tar.gz
+
+# IDE
+.idea/
