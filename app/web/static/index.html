@@ -189,13 +189,22 @@ async function loadKis(){
   KIST.total=d.total; KIST.rate=d.total_pnl_pct; updateHeader();
   document.getElementById('kis-st').innerHTML='총 '+won(d.total)+
     (d.total_pnl_pct!=null?` · <span class="${cls(d.total_pnl_pct)}">${pct(d.total_pnl_pct)}</span>`:'');
-  const b=document.getElementById('kis');
-  b.innerHTML=(d.positions&&d.positions.length)?d.positions.sort((a,b)=>b.value_krw-a.value_krw).map(p=>
-    `<tr><td><span class="pill ${p.market==='US'?'al':''}">${p.account}</span> <span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>
-     <td>${(+p.qty).toLocaleString(undefined,{maximumFractionDigits:2})}</td>
-     <td>${(+p.price).toLocaleString()} ${p.currency==='USD'?'$':''}</td>
-     <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td><td>${won(p.value_krw)}</td></tr>`).join('')
-    :'<tr><td class="empty" colspan=5>보유 없음</td></tr>';
+  const groups={}; (d.positions||[]).forEach(p=>{(groups[p.account]=groups[p.account]||[]).push(p)});
+  const icon={'ISA':'🟦','연금':'🟪','소수점':'🟩'}; let html='';
+  ['ISA','연금','소수점'].forEach(acc=>{
+    const ps=groups[acc]; if(!ps||!ps.length)return;
+    const sub=ps.reduce((s,p)=>s+p.value_krw,0);
+    const cost=ps.reduce((s,p)=>s+p.value_krw/(1+p.pnl_pct/100),0);
+    const rr=cost?(sub/cost-1)*100:0;
+    html+=`<tr style="background:#222834"><td><b>${icon[acc]||''} ${acc}</b> <span class="mut">${ps.length}종</span></td>
+      <td colspan=2></td><td class="${cls(rr)}">${pct(rr)}</td><td><b>${won(sub)}</b></td></tr>`;
+    ps.sort((a,b)=>b.value_krw-a.value_krw).forEach(p=>{
+      html+=`<tr><td style="padding-left:26px"><span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>
+        <td>${(+p.qty).toLocaleString(undefined,{maximumFractionDigits:2})}</td>
+        <td>${(+p.price).toLocaleString()} ${p.currency==='USD'?'$':''}</td>
+        <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td><td>${won(p.value_krw)}</td></tr>`;});
+  });
+  document.getElementById('kis').innerHTML=html||'<tr><td class="empty" colspan=5>보유 없음</td></tr>';
 }
 function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadScreen();}
 loadAll();
