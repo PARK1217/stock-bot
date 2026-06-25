@@ -10,10 +10,12 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import hashlib
+
 import redis
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from bot.brokers import get_broker
@@ -26,6 +28,55 @@ app = FastAPI(title="stock-bot API")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])
 _r = redis.from_url(settings.redis_url)
+
+# ---------------- 외부접속 인증(비번, 쿠키) ----------------
+_PW = settings.dashboard_password
+_AUTH_COOKIE = "sb_auth"
+_AUTH_TOKEN = hashlib.sha256(f"stockbot::{_PW}".encode()).hexdigest()[:40] if _PW else ""
+_LOGIN_HTML = """<!doctype html><html lang=ko><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>stock-bot</title>
+<style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
+background:#0f1115;color:#e6e9ef;font-family:system-ui,sans-serif}
+.box{background:#1a1d24;border:1px solid #2a2f3a;border-radius:14px;padding:28px 24px;width:280px;text-align:center}
+h1{font-size:20px;margin:0 0 18px}input{width:100%;box-sizing:border-box;background:#11141a;border:1px solid #2a2f3a;
+color:#e6e9ef;border-radius:8px;padding:11px;font-size:15px;margin-bottom:10px}
+button{width:100%;background:#4c8dff;color:#fff;border:0;border-radius:8px;padding:11px;font-size:15px;font-weight:600;cursor:pointer}
+.err{color:#ff5c6c;font-size:13px;height:16px;margin-top:8px}</style>
+<div class=box><h1>📈 stock-bot</h1>
+<input id=pw type=password placeholder="비밀번호" autofocus
+onkeydown="if(event.key==='Enter')go()">
+<button onclick=go()>접속</button><div class=err id=e></div></div>
+<script>async function go(){const p=document.getElementById('pw').value;
+const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},
+body:JSON.stringify({password:p})});
+if(r.ok)location.reload();else document.getElementById('e').textContent='비밀번호가 틀렸어요';}</script>
+</html>"""
+_AUTH_FREE = ("/api/login", "/api/health")
+
+
+@app.middleware("http")
+async def _auth(request: Request, call_next):
+    if not _PW:                                    # 비번 미설정 = 인증 비활성(집망내)
+        return await call_next(request)
+    path = request.url.path
+    if path in _AUTH_FREE or path.startswith("/assets"):
+        return await call_next(request)
+    if request.cookies.get(_AUTH_COOKIE) == _AUTH_TOKEN:
+        return await call_next(request)
+    if path.startswith("/api/"):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return HTMLResponse(_LOGIN_HTML, status_code=401)
+
+
+@app.post("/api/login")
+def login(body: dict):
+    if _PW and body.get("password") == _PW:
+        resp = JSONResponse({"ok": True})
+        resp.set_cookie(_AUTH_COOKIE, _AUTH_TOKEN, max_age=60 * 60 * 24 * 30,
+                        httponly=True, samesite="lax")
+        return resp
+    return JSONResponse({"ok": False}, status_code=401)
 
 
 @app.on_event("startup")

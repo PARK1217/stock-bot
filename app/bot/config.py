@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     mistral_base_url: str = "https://api.mistral.ai/v1"
     anthropic_api_key: str = ""           # (선택) Anthropic 대체
     sentiment_model: str = "claude-haiku-4-5-20251001"
+    dashboard_password: str = ""          # 대시보드 외부접속 비번(빈값=인증off, 집망내용)
 
     # risk
     max_position_pct: float = 20
