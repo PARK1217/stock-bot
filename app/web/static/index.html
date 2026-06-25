@@ -166,6 +166,7 @@ function toggleCur(){CUR=CUR==='KRW'?'USD':'KRW';document.getElementById('curtgl
   updateHeader();renderPortfolio();renderKis();renderPaper();renderTrades();}
 function amt(krw){if(krw==null)return'';return CUR==='KRW'?Math.round(krw).toLocaleString()+'원':'$'+Math.round(krw/(ST.fx||1540)).toLocaleString();}
 function samt(krw){if(krw==null)return'';return (krw>=0?'+':'')+amt(krw);}
+function pnlAmt(vk,pp){return (vk==null||pp==null)?null:vk-vk/(1+pp/100);}  // 평가손익 금액
 const pct=n=>n==null?'—':(n>=0?'+':'')+n.toFixed(2)+'%';
 const cls=n=>n==null?'':n>=0?'up':'down';
 const nf=(n,d=2)=>n==null?'—':(+n).toLocaleString(undefined,{maximumFractionDigits:d});
@@ -212,11 +213,13 @@ async function loadPortfolio(){
 }
 function vkrw(p){return p.qty*p.price*(p.currency==='USD'?ST.fx:1)}
 function posRow(p,mk){
+  const vk=mk==='US'?vkrw(p):p.value_krw, pa=pnlAmt(vk,p.pnl_pct);
   return `<div class="row" data-sym="${p.symbol}">
     <div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span> <span class="nm">${esc(p.name||'')}</span></div>
       <div class="row-s num">${nf(p.qty,4)}주 · ${nf(p.price)}${p.currency==='USD'?'$':'₩'}</div></div>
     <div class="row-r"><div class="v ${cls(p.pnl_pct)} num">${pct(p.pnl_pct)}</div>
-      <div class="v2 mut num">${amt(mk==='US'?vkrw(p):p.value_krw)}</div></div></div>`;
+      <div class="v2 ${cls(p.pnl_pct)} num">${samt(pa)}</div>
+      <div class="v2 mut num">${amt(vk)}</div></div></div>`;
 }
 function renderPortfolio(){
   const b=document.getElementById('pf');
@@ -224,15 +227,15 @@ function renderPortfolio(){
   renderScreen();
   ST.live_total=(ST.cash||0)+ST.pos.reduce((s,p)=>s+vkrw(p),0);
   document.getElementById('pf-st').innerHTML='총 '+amt(ST.live_total)+
-    (ST.total_pnl!=null?`<span class="seg ${cls(ST.total_pnl)}">전체 ${pct(ST.total_pnl)}</span>`:'')+
-    (ST.daily!=null?`<span class="seg ${cls(ST.daily)}">오늘 ${pct(ST.daily)}</span>`:'');
+    (ST.total_pnl!=null?`<span class="seg ${cls(ST.total_pnl)}">전체 ${pct(ST.total_pnl)}${ST.total_amt!=null?' ('+samt(ST.total_amt)+')':''}</span>`:'')+
+    (ST.daily!=null?`<span class="seg ${cls(ST.daily)}">오늘 ${pct(ST.daily)}${ST.daily_amt!=null?' ('+samt(ST.daily_amt)+')':''}</span>`:'');
   updateHeader();
 }
 function updateHeader(){
   const total=(ST.live_total||0)+(KIST.total||0);
   document.getElementById('total').textContent=amt(total);
   const parts=[];
-  if(ST.daily!=null) parts.push(`오늘 <b class="${cls(ST.daily)}">${pct(ST.daily)}</b>`);
+  if(ST.daily!=null) parts.push(`오늘 <b class="${cls(ST.daily)}">${pct(ST.daily)}${ST.daily_amt!=null?' ('+samt(ST.daily_amt)+')':''}</b>`);
   const tcost=(ST.total_pnl!=null&&ST.live_total)?ST.live_total/(1+ST.total_pnl/100):ST.live_total;
   const kcost=(KIST.rate!=null&&KIST.total)?KIST.total/(1+KIST.rate/100):KIST.total;
   const cost=tcost+kcost;
@@ -326,7 +329,7 @@ async function loadPaper(){const d=await j('/api/paper'); if(!d)return; PST=d; r
 function renderPaper(){
   const d=PST; if(!d)return;
   document.getElementById('paper-st').innerHTML=`총 ${amt(d.total)}`+
-    (d.ret_pct!=null?`<span class="seg ${cls(d.ret_pct)}">${pct(d.ret_pct)}</span>`:'<span class="seg">시작 전</span>')+
+    (d.ret_pct!=null?`<span class="seg ${cls(d.ret_pct)}">${pct(d.ret_pct)} (${samt(d.total-500000000)})</span>`:'<span class="seg">시작 전</span>')+
     (d.invested?`<span class="seg mut">투자 ${amt(d.invested)} · 현금 ${amt(d.cash)}</span>`:'')+
     `<span class="seg mut" style="opacity:.7">가상 5억</span>`;
   const b=document.getElementById('paper');
@@ -336,6 +339,7 @@ function renderPaper(){
        <span class="nm">${esc(p.name||'')}</span></div>
        <div class="row-s num">${nf(p.qty,2)}주 · ${nf(p.price)}${p.market==='US'?'$':'₩'}</div></div>
      <div class="row-r"><div class="v ${cls(p.pnl_pct)} num">${pct(p.pnl_pct)}</div>
+       <div class="v2 ${cls(p.pnl_pct)} num">${samt(pnlAmt(p.value_krw,p.pnl_pct))}</div>
        <div class="v2 mut num">${amt(p.value_krw)}</div></div></div>`).join('')
     :`<div class="empty">${d.error?'조회 오류':'장중 자동매매 시작 후 채워짐 (현금 '+amt(d.cash)+')'}</div>`;
 }
@@ -383,7 +387,7 @@ async function loadKis(){
 function renderKis(){
   const d=KIST.data; if(!d)return;
   document.getElementById('kis-st').innerHTML='총 '+amt(d.total)+
-    (d.total_pnl_pct!=null?`<span class="seg ${cls(d.total_pnl_pct)}">${pct(d.total_pnl_pct)}</span>`:'');
+    (d.total_pnl_pct!=null?`<span class="seg ${cls(d.total_pnl_pct)}">${pct(d.total_pnl_pct)}${d.total_pnl_amt_krw!=null?' ('+samt(d.total_pnl_amt_krw)+')':''}</span>`:'');
   const groups={}; (d.positions||[]).forEach(p=>{(groups[p.account]=groups[p.account]||[]).push(p)});
   const icon={'ISA':'🟦','연금':'🟪','소수점':'🟩'}; let html='';
   ['ISA','연금','소수점'].forEach(acc=>{
@@ -398,6 +402,7 @@ function renderKis(){
           <span class="nm">${esc(p.name||'')}</span></div>
           <div class="row-s num">${nf(p.qty,2)}주 · ${nf(p.price)}${p.currency==='USD'?'$':'₩'}</div></div>
         <div class="row-r"><div class="v ${cls(p.pnl_pct)} num">${pct(p.pnl_pct)}</div>
+          <div class="v2 ${cls(p.pnl_pct)} num">${samt(pnlAmt(p.value_krw,p.pnl_pct))}</div>
           <div class="v2 mut num">${amt(p.value_krw)}</div></div></div>`;});
   });
   document.getElementById('kis').innerHTML=html||'<div class="empty">보유 없음</div>';
