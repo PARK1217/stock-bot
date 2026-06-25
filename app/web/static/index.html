@@ -137,7 +137,7 @@ async function loadScreen(){
   const d=await j('/api/screen'); const st=document.getElementById('scn-st');
   if(!d){st.textContent='실패';return} st.textContent=d.length+'종';
   const mx=Math.max(...d.map(r=>r.score),1);
-  document.getElementById('scn').innerHTML=d.slice(0,12).map(r=>
+  document.getElementById('scn').innerHTML=d.map(r=>
     `<tr><td><span class="sym">${r.symbol}</span> ${r.trend_aligned?'<span class="pill al">정배열</span>':''}</td>
      <td><span class="bar"><i style="width:${Math.max(0,r.score/mx*100)}%"></i></span> ${r.score}</td>
      <td class="${cls(r.ret_1m)}">${pct(r.ret_1m)}</td>
