@@ -274,58 +274,75 @@ def paper():
         snaps = s.query(PaperSnapshot).order_by(PaperSnapshot.id.desc()).limit(90).all()
         out["history"] = [{"ts": str(x.ts), "total": x.total_eval}
                           for x in reversed(snaps)]
-        # 거래내역 — 최근 40건(성공/실패 모두). 주문→실체결 라이프사이클 추적.
-        rows = (s.query(OrderLog)
-                .filter(OrderLog.mode == "paper")
-                .order_by(OrderLog.id.desc()).limit(40).all())
-        fills = {}  # US odno→체결현황. 실패해도 거래내역은 표시.
-        try:
-            from bot.brokers.kis import KISBroker
-            kk = KISBroker(paper=True)
-            fills = kk.overseas_fills(
-                (datetime.now() - timedelta(days=4)).strftime("%Y%m%d"),
-                datetime.now().strftime("%Y%m%d"))
-        except Exception:  # noqa: BLE001
-            pass
-        trades = []
-        for t in rows:
-            mk = "US" if "us" in (t.broker or "") else "KR"
-            item = {"ts": str(t.ts), "symbol": t.symbol, "side": t.side,
-                    "qty": t.qty, "market": mk, "filled": None,
-                    "fill_price": None, "amount_krw": None}
-            if not t.ok:                                   # 접수 실패=거부
-                msg = t.message or ""
-                item["status"] = "거부"
-                item["note"] = ("혼잡(재시도)" if "초당" in msg else
-                                "장외" if "장시작" in msg or "장종료" in msg else
-                                "서버오류" if "500" in msg or "Server" in msg else
-                                "잔고부족" if "잔고" in msg else (msg[:14] or "실패"))
-                item["filled"] = 0
-            else:
-                oid = int(t.order_id) if (t.order_id or "").isdigit() else None
-                f = fills.get(oid) if oid else None
-                if f is not None:                          # US 체결현황 매칭됨
-                    item["filled"] = f["ccld"]
-                    item["status"] = ("체결" if f["ccld"] >= f["ord"] > 0 else
-                                      "부분체결" if f["ccld"] > 0 else "미체결")
-                    if f["ccld"] > 0:                       # 실체결 단가·거래대금
-                        item["fill_price"] = round(f["ccld_prc"], 2)
-                        item["amount_krw"] = round(f["ccld_amt"] * fx)
-                elif mk == "KR":                           # KR 시장가=즉시체결
-                    item["filled"] = t.qty
-                    item["status"] = "체결"
-                    if t.price:                             # KR은 OrderLog.price(있으면)
-                        item["fill_price"] = t.price
-                        item["amount_krw"] = round(t.price * t.qty)
-                else:                                      # US인데 조회범위 밖
-                    item["status"] = "접수"
-            trades.append(item)
-        out["trades"] = trades
-        # 총 거래대금(체결된 매수+매도 절대금액 합, ₩)
-        out["turnover_krw"] = round(sum(x["amount_krw"] or 0 for x in trades))
     if out["total"]:
         out["ret_pct"] = round((out["total"] / 500_000_000 - 1) * 100, 2)  # 초기 5억
     _cache_set("web:paper", out, 30)
+    return out
+
+
+def _trade_item(t: OrderLog, fills: dict, fx: float) -> dict:
+    """OrderLog 1건 → 거래내역 항목(주문→체결 상태·체결단가·거래대금)."""
+    mk = "US" if "us" in (t.broker or "") else "KR"
+    item = {"ts": str(t.ts), "symbol": t.symbol, "side": t.side, "qty": t.qty,
+            "market": mk, "filled": None, "fill_price": None, "amount_krw": None}
+    if not t.ok:                                       # 접수 실패=거부
+        msg = t.message or ""
+        item["status"] = "거부"
+        item["note"] = ("혼잡(재시도)" if "초당" in msg else
+                        "장외" if "장시작" in msg or "장종료" in msg else
+                        "서버오류" if "500" in msg or "Server" in msg else
+                        "잔고부족" if "잔고" in msg else (msg[:14] or "실패"))
+        item["filled"] = 0
+    else:
+        oid = int(t.order_id) if (t.order_id or "").isdigit() else None
+        f = fills.get(oid) if oid else None
+        if f is not None:                              # US 체결현황 매칭
+            item["filled"] = f["ccld"]
+            item["status"] = ("체결" if f["ccld"] >= f["ord"] > 0 else
+                              "부분체결" if f["ccld"] > 0 else "미체결")
+            if f["ccld"] > 0:
+                item["fill_price"] = round(f["ccld_prc"], 2)
+                item["amount_krw"] = round(f["ccld_amt"] * fx)
+        elif mk == "KR":                               # KR 시장가=즉시체결
+            item["filled"] = t.qty
+            item["status"] = "체결"
+            if t.price:
+                item["fill_price"] = t.price
+                item["amount_krw"] = round(t.price * t.qty)
+        else:                                          # US인데 조회범위 밖
+            item["status"] = "접수"
+    return item
+
+
+@app.get("/api/paper/trades")
+def paper_trades(page: int = 0, size: int = 8):
+    """모의 거래내역 — 페이징. 주문→실체결 라이프사이클 + 거래대금."""
+    page = max(0, page); size = min(max(size, 1), 50)
+    if (c := _cache_get(f"web:ptr:{page}:{size}")):
+        return c
+    fx = 1540.0
+    fills = {}
+    try:
+        from bot.brokers.kis import KISBroker
+        from bot.brokers.toss import TossBroker
+        fx = TossBroker().usdkrw() or 1540.0
+        fills = KISBroker(paper=True).overseas_fills(
+            (datetime.now() - timedelta(days=4)).strftime("%Y%m%d"),
+            datetime.now().strftime("%Y%m%d"))
+    except Exception:  # noqa: BLE001
+        pass
+    with SessionLocal() as s:
+        base = s.query(OrderLog).filter(OrderLog.mode == "paper")
+        total = base.count()
+        rows = (base.order_by(OrderLog.id.desc())
+                .offset(page * size).limit(size).all())
+        items = [_trade_item(t, fills, fx) for t in rows]
+    # 거래대금(최근 ccnl 범위 체결분, 매수+매도, ₩)
+    turnover = round(sum((f.get("ccld_amt") or 0) for f in fills.values()) * fx)
+    out = {"items": items, "page": page, "size": size, "total": total,
+           "pages": (total + size - 1) // size if total else 0,
+           "turnover_krw": turnover}
+    _cache_set(f"web:ptr:{page}:{size}", out, 20)
     return out
 
 
