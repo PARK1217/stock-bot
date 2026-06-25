@@ -248,7 +248,7 @@ function posRow(p,mk){
 function renderPortfolio(){
   const b=document.getElementById('pf');
   b.innerHTML=ST.pos.length?ST.pos.map(p=>posRow(p,'US')).join(''):'<div class="empty">보유 없음</div>';
-  renderScreen();
+  renderScreen(); renderNews();
   ST.live_total=(ST.cash||0)+ST.pos.reduce((s,p)=>s+vkrw(p),0);
   document.getElementById('pf-st').innerHTML='총 '+amt(ST.live_total)+
     (ST.total_pnl!=null?`<span class="seg ${cls(ST.total_pnl)}">전체 ${pct(ST.total_pnl)}${ST.total_amt!=null?' ('+samt(ST.total_amt)+')':''}</span>`:'')+
@@ -340,9 +340,13 @@ async function loadNews(){
   const d=await j('/api/news?symbols='+syms.join(','));
   if(!d){document.getElementById('news-st').textContent='실패';return}
   document.getElementById('news-st').textContent=d.length+'종';
+  window.NEWS=d; renderNews();
+}
+function renderNews(){
+  const d=window.NEWS; if(!d)return; const held=heldSyms();
   document.getElementById('news').innerHTML=d.map(n=>{
     const c=n.score>0.05?'up':(n.score<-0.05?'down':'mut');
-    return `<div class="news-i"><span class="${c}">●</span> <span class="sym">${n.symbol}</span>
+    return `<div class="news-i"><span class="${c}">●</span> <span class="sym">${n.symbol}</span>${held.has(n.symbol)?' <span class="tag hold">보유</span>':''}
       <span class="mut"> — ${md(n.summary||'-')}</span></div>`;}).join('');
 }
 
@@ -456,7 +460,7 @@ function renderKis(){
           <div class="v2 mut num">${amt(p.value_krw)}</div></div></div>`;});
   });
   document.getElementById('kis').innerHTML=html||'<div class="empty">보유 없음</div>';
-  renderScreen();
+  renderScreen(); renderNews();
 }
 
 // ---------- 부팅 ----------
