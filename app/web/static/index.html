@@ -85,6 +85,11 @@ const won=n=>n==null?'—':Math.round(n).toLocaleString()+'₩';
 const pct=n=>n==null?'—':(n>=0?'+':'')+n.toFixed(1)+'%';
 const cls=n=>n==null?'':n>=0?'up':'down';
 async function j(u){try{const r=await fetch(u);return await r.json()}catch(e){return null}}
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function md(s){s=esc(s);
+  s=s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
+  s=s.replace(/^\s*[-*]\s+/gm,'• ').replace(/\n+/g,' ');
+  return s;}
 
 let ST={fx:1,cash:0,pos:[],daily:null,total_pnl:null,live_total:0};
 let KIST={total:0,rate:null};
@@ -152,7 +157,7 @@ async function loadNews(){
     const c=n.score>0.05?'up':(n.score<-0.05?'down':'mut');
     return `<div style="padding:7px 14px;border-bottom:1px solid var(--line)">
       <span class="${c}">●</span> <span class="sym">${n.symbol}</span>
-      <span class="mut" style="font-size:13px"> — ${n.summary||'-'}</span></div>`;}).join('');
+      <span class="mut" style="font-size:13px"> — ${md(n.summary||'-')}</span></div>`;}).join('');
 }
 async function loadProposals(){
   const d=await j('/api/proposals'); const b=document.getElementById('prop');

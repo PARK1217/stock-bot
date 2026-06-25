@@ -156,5 +156,6 @@ def groq_summary(symbol: str, headlines: list[str]) -> str:
     if not (settings.groq_api_key or settings.mistral_api_key) or not headlines:
         return ""
     joined = "\n".join(f"- {h}" for h in headlines[:10])
-    txt = _llm_chat(f"{symbol} 관련 최근 뉴스를 한국어 한 문장으로 요약하라:\n{joined}", 120)
+    txt = _llm_chat(f"{symbol} 관련 최근 뉴스를 한국어 평문 한 문장으로 요약하라"
+                    f"(마크다운·별표·특수기호 없이):\n{joined}", 120)
     return (txt or "").strip()[:120]
