@@ -30,6 +30,10 @@
   .bar>i{display:block;height:100%;background:var(--accent)}
   .side-buy{color:var(--up)} .side-sell{color:var(--down)}
   @keyframes fl{from{background:#2b3550}to{background:transparent}} .flash{animation:fl .7s}
+  .ses{font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:600}
+  .s-reg{background:#173a2c;color:#27c281} .s-pre{background:#3a3417;color:#ffd454}
+  .s-aft{background:#3a2a17;color:#ffb454} .s-day{background:#17283a;color:#6fb3ff}
+  .s-off{background:#262a33;color:#8b93a3}
   .live{font-size:11px;color:var(--up)} .live::before{content:"● ";animation:bl 2s infinite}
   @keyframes bl{50%{opacity:.3}}
 </style>
@@ -39,6 +43,7 @@
   <h1>📈 stock-bot</h1>
   <span class="badge" id="meta">…</span>
   <span class="live" id="live" title="10초마다 시세 갱신">LIVE</span>
+  <span id="sess"></span>
   <span style="margin-left:auto;text-align:right">
     <button id="curtgl" onclick="toggleCur()" style="margin-right:8px" title="원화/달러 전환">₩</button>
     <span class="total" id="total">—</span><br>
@@ -87,6 +92,25 @@ let CUR='KRW';
 function toggleCur(){CUR=CUR==='KRW'?'USD':'KRW';document.getElementById('curtgl').textContent=CUR==='KRW'?'₩':'$';updateHeader();}
 function amt(krw){if(krw==null)return'';return CUR==='KRW'?Math.round(krw).toLocaleString()+'원':'$'+Math.round(krw/(ST.fx||1540)).toLocaleString();}
 function samt(krw){if(krw==null)return'';return (krw>=0?'+':'')+amt(krw);}
+function tzMin(tz){const d=new Date(new Date().toLocaleString('en-US',{timeZone:tz}));return [d.getDay(),d.getHours()*60+d.getMinutes()];}
+function usSession(){const [d,m]=tzMin('America/New_York');  // ET 기준
+  if(d===6) return ['미국 마감','s-off'];
+  if(d===0&&m<20*60) return ['미국 마감','s-off'];
+  if(d===5&&m>=20*60) return ['미국 마감','s-off'];
+  if(m>=240&&m<570) return ['프리마켓','s-pre'];
+  if(m>=570&&m<960) return ['정규장','s-reg'];
+  if(m>=960&&m<1200) return ['애프터','s-aft'];
+  return ['데이마켓','s-day'];}  // 20:00~04:00 ET = 한국 주간거래
+function krSession(){const [d,m]=tzMin('Asia/Seoul');
+  if(d===0||d===6) return ['한국 마감','s-off'];
+  if(m>=540&&m<930) return ['한국 정규장','s-reg'];
+  if(m>=480&&m<540) return ['한국 장전','s-pre'];
+  if(m>=940&&m<960) return ['한국 시간외','s-aft'];
+  return ['한국 마감','s-off'];}
+function updateSessions(){
+  const [us,uc]=usSession(),[kr,kc]=krSession();
+  document.getElementById('sess').innerHTML=
+    `<span class="ses ${uc}">🇺🇸 ${us}</span><span class="ses ${kc}">🇰🇷 ${kr}</span>`;}
 const pct=n=>n==null?'—':(n>=0?'+':'')+n.toFixed(1)+'%';
 const cls=n=>n==null?'':n>=0?'up':'down';
 async function j(u){try{const r=await fetch(u);return await r.json()}catch(e){return null}}
@@ -219,7 +243,8 @@ async function loadKis(){
   document.getElementById('kis').innerHTML=html||'<tr><td class="empty" colspan=5>보유 없음</td></tr>';
 }
 function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadScreen();}
-loadAll();
+loadAll(); updateSessions();
+setInterval(updateSessions,30000);                              // 시장 세션 표시
 setInterval(pollQuotes,10000);                                   // 10초 라이브 시세
 setInterval(()=>{loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();},60000);  // 1분 전체
 </script>
