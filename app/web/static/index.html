@@ -90,6 +90,12 @@
   .news-i code{background:#222834;padding:1px 5px;border-radius:4px;font-size:12px}
 
   @keyframes fl{from{background:#243154}to{background:transparent}} .flash{animation:fl .8s}
+  .help-btn{background:#222834;border:1px solid var(--line);color:var(--mut);border-radius:6px;
+    padding:2px 8px;font-size:11px;cursor:pointer;font-weight:600}
+  .help-btn:active{transform:scale(.94)}
+  .help-box{padding:11px 14px;border-bottom:1px solid var(--line);font-size:12px;line-height:1.65;
+    color:#b8bfca;background:#15181e}
+  .help-box .k{color:var(--fg);font-weight:600} .help-box .row-h{margin-top:5px}
 </style>
 </head>
 <body>
@@ -119,7 +125,17 @@
   </div>
 
   <div class="card">
-    <h2>📈 추세 스크리너 <span class="sub" id="scn-st">로딩…</span></h2>
+    <h2>📈 추세 스크리너
+      <span class="sub"><button class="help-btn" onclick="toggleHelp('scn-help')">ⓘ 설명</button>
+        <span id="scn-st">로딩…</span></span></h2>
+    <div id="scn-help" class="help-box" style="display:none">
+      <div><span class="k">점수</span> = 모멘텀(1·3개월 수익률) + 정배열 보너스 + 200일선 이격 − 변동성.
+        <span class="mut">높을수록 ‘꾸준한 우상향’. 막대는 1위 대비 상대 크기.</span></div>
+      <div class="row-h"><span class="tag al">정배열</span> 현재가 &gt; 20일 &gt; 50일 &gt; 200일 이동평균선 순 정렬
+        <span class="mut">— 단·중·장기선이 우상향으로 늘어선 강한 상승추세.</span></div>
+      <div class="row-h"><span class="k">1M·3M</span> 최근 1개월·3개월 수익률.</div>
+      <div class="row-h"><span class="tag hold">보유</span> 내가 실제 보유 중인 종목.</div>
+    </div>
     <div id="scn"><div class="empty">계산 중 (최초 ~30초)…</div></div>
   </div>
 
@@ -175,6 +191,7 @@ function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 function md(s){s=esc(s);s=s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
   s=s.replace(/^\s*[-*]\s+/gm,'• ').replace(/\n+/g,' ');return s;}
 function mkt(m){return `<span class="tag ${m==='US'?'us':'kr'}">${m}</span>`;}
+function toggleHelp(id){const e=document.getElementById(id);if(e)e.style.display=e.style.display==='none'?'block':'none';}
 
 // ---------- 시장 세션 ----------
 function tzMin(tz){const d=new Date(new Date().toLocaleString('en-US',{timeZone:tz}));return [d.getDay(),d.getHours()*60+d.getMinutes()];}
@@ -394,9 +411,9 @@ function renderKis(){
     const ps=groups[acc]; if(!ps||!ps.length)return;
     const sub=ps.reduce((s,p)=>s+p.value_krw,0);
     const cost=ps.reduce((s,p)=>s+p.value_krw/(1+p.pnl_pct/100),0);
-    const rr=cost?(sub/cost-1)*100:0;
+    const rr=cost?(sub/cost-1)*100:0, pa=sub-cost;
     html+=`<div class="grp"><span>${icon[acc]||''} ${acc} <span class="mut" style="font-weight:400">${ps.length}종</span></span>
-      <span><span class="${cls(rr)} num">${pct(rr)}</span> &nbsp;<b class="num">${amt(sub)}</b></span></div>`;
+      <span class="num"><span class="${cls(rr)}">${pct(rr)} (${samt(pa)})</span> &nbsp;<b>${amt(sub)}</b></span></div>`;
     ps.sort((a,b)=>b.value_krw-a.value_krw).forEach(p=>{
       html+=`<div class="row sub-row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>
           <span class="nm">${esc(p.name||'')}</span></div>
