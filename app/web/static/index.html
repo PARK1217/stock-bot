@@ -53,6 +53,11 @@
     <tbody id="scn"><tr><td class="empty" colspan="5">계산 중(최초 ~30초)…</td></tr></tbody></table>
   </div>
   <div class="card span2">
+    <h2>🏦 한투 실계좌 (ISA·연금·소수점) <span class="mut" id="kis-st"></span></h2>
+    <table><thead><tr><th>계좌·종목</th><th>수량</th><th>현재가</th><th>수익률</th><th>평가(₩)</th></tr></thead>
+    <tbody id="kis"><tr><td class="empty" colspan="5">불러오는 중…</td></tr></tbody></table>
+  </div>
+  <div class="card span2">
     <h2>🧪 모의 자동매매 (전략 검증) <span class="mut" id="paper-st"></span></h2>
     <table><thead><tr><th>종목</th><th>수량</th><th>현재가</th><th>수익률</th><th>평가</th></tr></thead>
     <tbody id="paper"><tr><td class="empty" colspan="5">—</td></tr></tbody></table>
@@ -143,10 +148,21 @@ async function loadPaper(){
      <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td><td>${won(p.value_krw)}</td></tr>`).join('')
     :`<tr><td class="empty" colspan=5>${d.error?'조회 오류':'장중 자동매매 시작 후 채워짐 (현금 '+won(d.cash)+')'}</td></tr>`;
 }
-function loadAll(){loadPortfolio();loadProposals();loadPred();loadPaper();loadScreen();}
+async function loadKis(){
+  const d=await j('/api/kis'); if(!d)return;
+  document.getElementById('kis-st').textContent='총 '+won(d.total);
+  const b=document.getElementById('kis');
+  b.innerHTML=(d.positions&&d.positions.length)?d.positions.sort((a,b)=>b.value_krw-a.value_krw).map(p=>
+    `<tr><td><span class="pill ${p.market==='US'?'al':''}">${p.account}</span> <span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>
+     <td>${(+p.qty).toLocaleString(undefined,{maximumFractionDigits:2})}</td>
+     <td>${(+p.price).toLocaleString()} ${p.currency==='USD'?'$':''}</td>
+     <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td><td>${won(p.value_krw)}</td></tr>`).join('')
+    :'<tr><td class="empty" colspan=5>보유 없음</td></tr>';
+}
+function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadScreen();}
 loadAll();
 setInterval(pollQuotes,10000);                                   // 10초 라이브 시세
-setInterval(()=>{loadPortfolio();loadProposals();loadPred();loadPaper();},60000);  // 1분 전체
+setInterval(()=>{loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();},60000);  // 1분 전체
 </script>
 </body>
 </html>

@@ -66,6 +66,39 @@ def portfolio(broker: str = Query(default="")):
     }
 
 
+@app.get("/api/kis")
+def kis_accounts():
+    """한투 실계좌 통합(ISA·연금=국내, 소수점=해외). 캐시 60초."""
+    if c := _cache_get("web:kis"):
+        return c
+    from bot.brokers.kis import KISBroker
+    from bot.brokers.toss import TossBroker
+    fx = TossBroker().usdkrw() or 1540.0
+    accts = [("63776023", "01", "ISA", "KR"), ("63776023", "22", "연금", "KR"),
+             ("63751874", "01", "소수점", "US")]
+    out = {"total": 0.0, "positions": [], "fx": fx}
+    for cano, prod, label, mk in accts:
+        try:
+            b = KISBroker(account=(cano, prod), paper=False)  # 실전
+            bal = b.get_overseas_balance() if mk == "US" else b.get_balance()
+        except Exception as e:  # noqa: BLE001
+            out.setdefault("errors", []).append(f"{label}: {e}")
+            continue
+        if mk == "KR":
+            out["total"] += bal.total_eval
+        for p in bal.positions:
+            vkrw = p.market_value * (fx if p.currency == "USD" else 1)
+            if mk == "US":
+                out["total"] += vkrw
+            out["positions"].append({
+                "account": label, "market": mk, "symbol": p.symbol,
+                "name": p.name, "qty": p.qty, "price": p.current_price,
+                "currency": p.currency, "pnl_pct": round(p.pnl_pct, 2),
+                "value_krw": vkrw})
+    _cache_set("web:kis", out, 60)
+    return out
+
+
 @app.get("/api/quotes")
 def quotes(symbols: str = Query(default="")):
     """보유종목 현재가 일괄(1회 호출). 5초 캐시. 대시보드 라이브 갱신용."""
