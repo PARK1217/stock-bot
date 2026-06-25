@@ -29,9 +29,11 @@
   .s-reg{background:#173a2c;color:#27c281} .s-pre{background:#3a3417;color:#ffd454}
   .s-aft{background:#3a2a17;color:#ffb454} .s-day{background:#17283a;color:#6fb3ff}
   .s-off{background:#262a33;color:#8b93a3}
-  .icon-btn{margin-left:auto;background:#222834;color:var(--fg);border:1px solid var(--line);
+  .icon-btn{background:#222834;color:var(--fg);border:1px solid var(--line);
     border-radius:8px;padding:4px 11px;cursor:pointer;font-size:13px;font-weight:600}
   .icon-btn:active{transform:scale(.94)}
+  .h-meta .icon-btn{padding:3px 10px;font-size:12px}
+  .h-meta .icon-btn:first-of-type{margin-left:auto}
 
   /* 레이아웃 */
   .wrap{padding:14px;display:grid;gap:14px;grid-template-columns:1fr;max-width:1180px;margin:0 auto;
@@ -94,8 +96,6 @@
 <header>
   <div class="h-top">
     <h1>📈 stock-bot</h1>
-    <button class="icon-btn" id="curtgl" onclick="toggleCur()" title="원화/달러">₩</button>
-    <button class="icon-btn" onclick="loadAll()" title="새로고침" style="margin-left:8px">↻</button>
     <div class="h-tot">
       <div class="v num" id="total">—</div>
       <div class="r num" id="rets"></div>
@@ -106,6 +106,8 @@
     <span class="badge" id="meta">…</span>
     <span class="ses s-off" id="ses-us">🇺🇸</span>
     <span class="ses s-off" id="ses-kr">🇰🇷</span>
+    <button class="icon-btn" id="curtgl" onclick="toggleCur()" title="원화/달러">₩</button>
+    <button class="icon-btn" onclick="loadAll()" title="새로고침">↻</button>
   </div>
 </header>
 
