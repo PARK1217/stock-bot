@@ -314,6 +314,24 @@ def _trade_item(t: OrderLog, fills: dict, fx: float) -> dict:
     return item
 
 
+@app.get("/api/screen/backtest")
+def screen_backtest():
+    """스크리너 점수 신뢰도 — 점수 vs 이후수익 백테스트(IC·스프레드·적중). 24h 캐시."""
+    if (c := _cache_get("web:scn:bt")):
+        return c
+    from bot.screener import backtest_score, DEFAULT_WATCHLIST
+    b = get_broker()
+    candles = {}
+    for s in DEFAULT_WATCHLIST:
+        try:
+            candles[s] = b.get_candles(s, "1d", 200)
+        except Exception:  # noqa: BLE001
+            pass
+    out = backtest_score(candles)
+    _cache_set("web:scn:bt", out, 86400)
+    return out
+
+
 @app.get("/api/paper/trades")
 def paper_trades(page: int = 0, size: int = 8):
     """모의 거래내역 — 페이징. 주문→실체결 라이프사이클 + 거래대금."""

@@ -126,9 +126,12 @@
 
   <div class="card">
     <h2>📈 추세 스크리너
-      <span class="sub"><button class="help-btn" onclick="toggleHelp('scn-help')">ⓘ 설명</button>
+      <span class="sub"><span id="scn-grade"></span>
+        <button class="help-btn" onclick="toggleHelp('scn-help')">ⓘ 설명</button>
         <span id="scn-st">로딩…</span></span></h2>
     <div id="scn-help" class="help-box" style="display:none">
+      <div id="scn-bt" style="padding-bottom:9px;margin-bottom:9px;border-bottom:1px solid var(--line)">
+        <span class="k">신뢰도</span> 측정 중…</div>
       <div><span class="k">점수</span> = 모멘텀(1·3개월 수익률) + 정배열 보너스 + 200일선 이격 − 변동성.
         <span class="mut">높을수록 ‘꾸준한 우상향’. 막대는 1위 대비 상대 크기.</span></div>
       <div class="row-h"><span class="tag al">정배열</span> 현재가 &gt; 20일 &gt; 50일 &gt; 200일 이동평균선 순 정렬
@@ -296,6 +299,26 @@ async function loadScreen(){
   if(!d){st.textContent='실패';return} st.textContent=d.length+'종';
   window.SCN=d; renderScreen(); loadNews();
 }
+function gradeColor(g){return g==='양호'?'var(--up)':g==='보통'?'var(--warn)':g==='역상관'?'var(--down)':'var(--mut)';}
+function btInterp(d){
+  const dir=d.spread>=0?'높았음':'낮았음', mo=Math.round(d.horizon/21);
+  let s=`점수 상위 종목이 약 ${mo}개월 뒤 평균 <b class="${cls(d.spread)}">${(d.spread>=0?'+':'')+d.spread}%p</b> ${dir} `+
+    `<span class="mut">(상위 ${d.high_avg}% vs 하위 ${d.low_avg}%, 방향적중 ${d.hit}%)</span>.`;
+  if(d.ic<-0.03) s+=' → 모멘텀이 단기 <b>평균회귀(되돌림)</b> 경향. <b class="down">추격매수 신호로 부적합</b>, 추세 모니터링용.';
+  else if(Math.abs(d.ic)<0.05) s+=' → 점수와 이후수익 상관이 거의 없음(랜덤 수준). 참고만.';
+  else if(d.ic<0.15) s+=' → 약한 양의 상관. 보조지표로 참고 가능.';
+  else s+=' → 뚜렷한 <b class="up">양의 상관</b>. 점수가 유의미.';
+  return s;
+}
+async function loadBT(){
+  const d=await j('/api/screen/backtest'); const gb=document.getElementById('scn-grade'),e=document.getElementById('scn-bt');
+  if(!d||d.grade==='데이터부족'){if(gb)gb.textContent='';if(e)e.innerHTML='<span class="k">신뢰도</span> 표본 부족';return;}
+  const col=gradeColor(d.grade), lbl=d.grade==='역상관'?'⚠️역상관':d.grade;
+  if(gb)gb.innerHTML=`<span style="color:${col};font-weight:700">${lbl}</span>`;
+  if(e)e.innerHTML=`<span class="k">신뢰도</span> <b style="color:${col}">${lbl}</b> `+
+    `<span class="mut">IC ${d.ic} · 표본 ${d.n.toLocaleString()}건 (과거 점수 vs 이후 1개월 실수익 백테스트)</span>`+
+    `<div class="row-h">${btInterp(d)}</div>`;
+}
 
 // ---------- 뉴스 ----------
 async function loadNews(){
@@ -427,7 +450,7 @@ function renderKis(){
 }
 
 // ---------- 부팅 ----------
-function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(0);loadScreen();}
+function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(0);loadScreen();loadBT();}
 loadAll(); updateSessions();
 setInterval(updateSessions,30000);
 setInterval(pollQuotes,10000);
