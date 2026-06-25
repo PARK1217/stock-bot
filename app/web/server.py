@@ -273,14 +273,46 @@ def paper():
         snaps = s.query(PaperSnapshot).order_by(PaperSnapshot.id.desc()).limit(90).all()
         out["history"] = [{"ts": str(x.ts), "total": x.total_eval}
                           for x in reversed(snaps)]
-        # 거래내역(실제 접수된 모의 주문) — 최근 40건
-        trades = (s.query(OrderLog)
-                  .filter(OrderLog.mode == "paper", OrderLog.ok.is_(True))
-                  .order_by(OrderLog.id.desc()).limit(40).all())
-        out["trades"] = [{"ts": str(t.ts), "symbol": t.symbol, "side": t.side,
-                          "qty": t.qty, "price": t.price,
-                          "market": "US" if "us" in (t.broker or "") else "KR"}
-                         for t in trades]
+        # 거래내역 — 최근 40건(성공/실패 모두). 주문→실체결 라이프사이클 추적.
+        rows = (s.query(OrderLog)
+                .filter(OrderLog.mode == "paper")
+                .order_by(OrderLog.id.desc()).limit(40).all())
+        fills = {}  # US odno→체결현황. 실패해도 거래내역은 표시.
+        try:
+            from bot.brokers.kis import KISBroker
+            kk = KISBroker(paper=True)
+            fills = kk.overseas_fills(
+                (datetime.now() - timedelta(days=4)).strftime("%Y%m%d"),
+                datetime.now().strftime("%Y%m%d"))
+        except Exception:  # noqa: BLE001
+            pass
+        trades = []
+        for t in rows:
+            mk = "US" if "us" in (t.broker or "") else "KR"
+            item = {"ts": str(t.ts), "symbol": t.symbol, "side": t.side,
+                    "qty": t.qty, "market": mk, "filled": None}
+            if not t.ok:                                   # 접수 실패=거부
+                msg = t.message or ""
+                item["status"] = "거부"
+                item["note"] = ("혼잡(재시도)" if "초당" in msg else
+                                "장외" if "장시작" in msg or "장종료" in msg else
+                                "서버오류" if "500" in msg or "Server" in msg else
+                                "잔고부족" if "잔고" in msg else (msg[:14] or "실패"))
+                item["filled"] = 0
+            else:
+                oid = int(t.order_id) if (t.order_id or "").isdigit() else None
+                f = fills.get(oid) if oid else None
+                if f is not None:                          # US 체결현황 매칭됨
+                    item["filled"] = f["ccld"]
+                    item["status"] = ("체결" if f["ccld"] >= f["ord"] > 0 else
+                                      "부분체결" if f["ccld"] > 0 else "미체결")
+                elif mk == "KR":                           # KR 시장가=즉시체결
+                    item["filled"] = t.qty
+                    item["status"] = "체결"
+                else:                                      # US인데 조회범위 밖
+                    item["status"] = "접수"
+            trades.append(item)
+        out["trades"] = trades
     if out["total"]:
         out["ret_pct"] = round((out["total"] / 500_000_000 - 1) * 100, 2)  # 초기 5억
     _cache_set("web:paper", out, 30)

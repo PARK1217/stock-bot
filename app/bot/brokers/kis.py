@@ -227,6 +227,29 @@ class KISBroker(BrokerAdapter):
             time.sleep(0.2)
         return Balance(cash=0.0, total_eval=0.0, positions=list(merged.values()))
 
+    def overseas_fills(self, start: str, end: str) -> dict[int, dict]:
+        """해외 주문별 체결현황 {odno(int): {ord,ccld,nccs}}. 주문→실체결 추적용.
+        inquire-ccnl(모의 VTTS3035R / 실전 TTTS3035R). start/end=YYYYMMDD."""
+        tr = "VTTS3035R" if self.paper else "TTTS3035R"
+        resp = self._get(
+            "/uapi/overseas-stock/v1/trading/inquire-ccnl", self._headers(tr),
+            {"CANO": self.cano, "ACNT_PRDT_CD": self.prod, "PDNO": "",
+             "ORD_STRT_DT": start, "ORD_END_DT": end, "SLL_BUY_DVSN": "00",
+             "CCLD_NCCS_DVSN": "00", "OVRS_EXCG_CD": "%", "SORT_SQN": "DS",
+             "ORD_DT": "", "ORD_GNO_BRNO": "", "ODNO": "",
+             "CTX_AREA_NK200": "", "CTX_AREA_FK200": ""})
+        resp.raise_for_status()
+        out: dict[int, dict] = {}
+        for r in resp.json().get("output", []) or []:
+            try:
+                oid = int(r.get("odno") or 0)
+            except (ValueError, TypeError):
+                continue
+            out[oid] = {"ord": float(r.get("ft_ord_qty") or r.get("ord_qty") or 0),
+                        "ccld": float(r.get("ft_ccld_qty") or 0),
+                        "nccs": float(r.get("nccs_qty") or 0)}
+        return out
+
     def place_overseas_order(self, symbol: str, side: Side, qty: int, price: float,
                              exchange: str | None = None) -> OrderResult:
         """해외(미국) 지정가 주문. 거래소코드 자동탐색(NASD/NYSE/AMEX)+캐시."""
