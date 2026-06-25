@@ -48,6 +48,8 @@ class Balance:
     positions: list[Position] = field(default_factory=list)
     daily_pnl_pct: float | None = None   # 오늘 수익률(%)
     total_pnl_pct: float | None = None   # 전체(누적) 수익률(%)
+    daily_pnl_amt: float | None = None   # 오늘 손익 금액(계좌통화)
+    total_pnl_amt: float | None = None   # 전체 손익 금액(계좌통화)
 
 
 @dataclass

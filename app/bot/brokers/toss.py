@@ -187,10 +187,20 @@ class TossBroker(BrokerAdapter):
                 return round(float(d) * 100, 2)
             except (TypeError, ValueError):
                 return None
+
+        def _amt(d):
+            try:
+                return float(d)
+            except (TypeError, ValueError):
+                return None
+        pl = result.get("profitLoss") or {}
+        dpl = result.get("dailyProfitLoss") or {}
         total = cash + sum(p.market_value for p in positions)
         return Balance(cash=cash, total_eval=total, positions=positions,
-                       total_pnl_pct=_rate((result.get("profitLoss") or {}).get("rate")),
-                       daily_pnl_pct=_rate((result.get("dailyProfitLoss") or {}).get("rate")))
+                       total_pnl_pct=_rate(pl.get("rate")),
+                       daily_pnl_pct=_rate(dpl.get("rate")),
+                       total_pnl_amt=_amt((pl.get("amount") or {}).get("usd")),
+                       daily_pnl_amt=_amt((dpl.get("amount") or {}).get("usd")))
 
     # ---------- order ----------
     def place_order(self, symbol: str, side: Side, qty: float,

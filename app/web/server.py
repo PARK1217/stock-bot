@@ -58,6 +58,8 @@ def portfolio(broker: str = Query(default="")):
     return {
         "broker": b.name, "fx": fx, "cash": bal.cash, "total_krw": total_krw,
         "daily_pnl_pct": bal.daily_pnl_pct, "total_pnl_pct": bal.total_pnl_pct,
+        "daily_pnl_amt_krw": bal.daily_pnl_amt * fx if bal.daily_pnl_amt is not None else None,
+        "total_pnl_amt_krw": bal.total_pnl_amt * fx if bal.total_pnl_amt is not None else None,
         "positions": [{
             "symbol": p.symbol, "name": p.name, "qty": p.qty,
             "avg_price": p.avg_price, "price": p.current_price,
@@ -121,6 +123,7 @@ def kis_accounts():
                for p in out["positions"] if p["pnl_pct"] > -100)
     val = sum(p["value_krw"] for p in out["positions"])
     out["total_pnl_pct"] = round((val / cost - 1) * 100, 2) if cost else None
+    out["total_pnl_amt_krw"] = round(val - cost) if cost else None
     _cache_set("web:kis", out, 60)
     return out
 
