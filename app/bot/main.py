@@ -96,6 +96,19 @@ def cmd_balance_all() -> None:
     notify(msg)
 
 
+def cmd_paper() -> None:
+    """모의계좌 자동매매(예측+스크리너 종합) — KIS 모의에 실제 주문."""
+    from bot.papertrader import run_paper
+    r = run_paper()
+    if r.get("error"):
+        log.info("모의매매 스킵: %s", r["error"])
+        return
+    head = f"🧪 모의 자동매매 · 총 {r['total']:,.0f}원 · 목표 {', '.join(r['targets'])}"
+    body = "\n".join(r["orders"]) if r["orders"] else "리밸런싱 변경 없음"
+    notify(head + "\n" + body)
+    print(head + "\n" + body)
+
+
 # ---------- 제안 ----------
 def cmd_propose() -> None:
     broker, strategy, risk = _build()
@@ -308,6 +321,9 @@ def cmd_run() -> None:
     sched.add_job(cmd_propose, "cron", day_of_week="mon-fri", hour=10, minute=0)
     sched.add_job(cmd_screen, "cron", day_of_week="mon-fri", hour=9, minute=10)
     sched.add_job(cmd_snapshot, "cron", day_of_week="mon-fri", hour=15, minute=40)
+    # 모의 자동매매 — 장중 여러번(시가후·정오·종가전), 평일
+    for h, m in [(9, 15), (12, 30), (15, 0)]:
+        sched.add_job(cmd_paper, "cron", day_of_week="mon-fri", hour=h, minute=m)
     notify(f"🤖 stock-bot 스케줄러 시작 (반자동, {broker_label()})")
     log.info("scheduler started")
     sched.start()
@@ -320,6 +336,7 @@ def broker_label() -> str:
 COMMANDS = {
     "balance": cmd_balance,
     "balance-all": cmd_balance_all,
+    "paper": cmd_paper,
     "propose": cmd_propose,
     "screen": cmd_screen,
     "accuracy": cmd_accuracy,

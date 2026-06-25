@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from bot.brokers import get_broker
 from bot.config import settings
 from bot.storage.db import SessionLocal, init_db
-from bot.storage.models import Prediction, Proposal, DailySnapshot
+from bot.storage.models import Prediction, Proposal, DailySnapshot, PaperSnapshot
 
 log = logging.getLogger(__name__)
 app = FastAPI(title="stock-bot API")
@@ -170,6 +170,36 @@ def accuracy():
             "dir_acc": round(sum(1 for p in ev if p.dir_hit) / n, 3),
             "band_acc": round(sum(1 for p in ev if p.band_hit) / n, 3),
         }
+
+
+@app.get("/api/paper")
+def paper():
+    """모의 자동매매 계좌(전략 검증) — 잔고·보유·성적표."""
+    if c := _cache_get("web:paper"):
+        return c
+    from bot.brokers.kis import KISBroker
+    out = {"cash": 0, "total": 0, "positions": [], "history": [], "ret_pct": None}
+    try:
+        bal = KISBroker(paper=True).get_balance()
+        total = bal.cash + sum(p.market_value for p in bal.positions)
+        out["cash"] = bal.cash
+        out["total"] = total
+        out["positions"] = [{
+            "symbol": p.symbol, "name": p.name, "qty": p.qty,
+            "avg_price": p.avg_price, "price": p.current_price,
+            "pnl_pct": round(p.pnl_pct, 2), "value": p.market_value,
+        } for p in bal.positions]
+    except Exception as e:  # noqa: BLE001
+        out["error"] = str(e)
+    with SessionLocal() as s:
+        snaps = s.query(PaperSnapshot).order_by(PaperSnapshot.id.desc()).limit(90).all()
+        out["history"] = [{"ts": str(x.ts), "total": x.total_eval}
+                          for x in reversed(snaps)]
+        base = snaps[-1].total_eval if snaps else 500_000_000  # 초기 5억
+        if out["total"] and base:
+            out["ret_pct"] = round((out["total"] / base - 1) * 100, 2)
+    _cache_set("web:paper", out, 30)
+    return out
 
 
 @app.get("/api/snapshots")

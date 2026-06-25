@@ -57,6 +57,17 @@ class DailySnapshot(Base):
     total_eval: Mapped[float] = mapped_column(Float)
 
 
+class PaperSnapshot(Base):
+    """모의 자동매매 성적표 — 매 실행 시 모의계좌 총평가 기록."""
+    __tablename__ = "paper_snapshot"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    cash: Mapped[float] = mapped_column(Float)
+    total_eval: Mapped[float] = mapped_column(Float)
+    holdings: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Prediction(Base):
     """자기예측추적 — 예측을 기록하고 만기 후 실제와 대조해 '실측 정확도'를 산출."""
     __tablename__ = "prediction"

@@ -34,12 +34,21 @@ TR = {
 class KISBroker(BrokerAdapter):
     name = "kis"
 
-    def __init__(self, account: tuple[str, str] | None = None):
-        # account=(CANO, PRDT) 지정 시 해당 계좌 조회(통합조회용). 미지정 시 기본 계좌.
-        self.paper = settings.is_paper
+    def __init__(self, account: tuple[str, str] | None = None,
+                 paper: bool | None = None):
+        # account=(CANO,PRDT) 지정 시 해당 계좌. paper=True면 TRADING_MODE 무관 모의 강제
+        # (모의 자동매매가 실전모드에서도 실거래 안 되도록 안전장치).
+        self.paper = settings.is_paper if paper is None else paper
         self.host = PAPER_HOST if self.paper else LIVE_HOST
-        self.cano, self.prod = account or (settings.kis_account_no,
-                                           settings.kis_account_prod)
+        if self.paper:
+            self._key = settings.kis_paper_app_key
+            self._sec = settings.kis_paper_app_secret
+            default = (settings.kis_paper_account_no, settings.kis_paper_account_prod)
+        else:
+            self._key = settings.kis_live_app_key
+            self._sec = settings.kis_live_app_secret
+            default = (settings.kis_live_account_no, settings.kis_live_account_prod)
+        self.cano, self.prod = account or default
         self._redis = redis.from_url(settings.redis_url)
         self._client = httpx.Client(base_url=self.host, timeout=10.0)
         self._token_key = f"kis:token:{'paper' if self.paper else 'live'}"
@@ -54,8 +63,8 @@ class KISBroker(BrokerAdapter):
             "/oauth2/tokenP",
             json={
                 "grant_type": "client_credentials",
-                "appkey": settings.kis_app_key,
-                "appsecret": settings.kis_app_secret,
+                "appkey": self._key,
+                "appsecret": self._sec,
             },
         )
         resp.raise_for_status()
@@ -70,8 +79,8 @@ class KISBroker(BrokerAdapter):
         h = {
             "content-type": "application/json; charset=utf-8",
             "authorization": f"Bearer {self._access_token()}",
-            "appkey": settings.kis_app_key,
-            "appsecret": settings.kis_app_secret,
+            "appkey": self._key,
+            "appsecret": self._sec,
             "tr_id": tr_id,
             "custtype": "P",  # 개인
         }
@@ -84,8 +93,8 @@ class KISBroker(BrokerAdapter):
             "/uapi/hashkey",
             headers={
                 "content-type": "application/json; charset=utf-8",
-                "appkey": settings.kis_app_key,
-                "appsecret": settings.kis_app_secret,
+                "appkey": self._key,
+                "appsecret": self._sec,
             },
             json=body,
         )
@@ -207,13 +216,14 @@ class KISBroker(BrokerAdapter):
                 headers=self._headers(tr_id, hashkey=hashkey),
                 json=body,
             )
-            resp.raise_for_status()
-            data = resp.json()
-        except httpx.HTTPError as e:
-            log.exception("KIS order failed")
+            data = resp.json()  # KIS는 거절(장마감 등)도 본문에 msg1 담아 5xx로 줌
+        except (httpx.HTTPError, ValueError) as e:
+            log.warning("KIS 주문 통신실패: %s", e)
             return OrderResult(ok=False, message=str(e))
 
         ok = data.get("rt_cd") == "0"
+        if not ok:
+            log.info("KIS 주문 거절: %s", data.get("msg1"))
         return OrderResult(
             ok=ok,
             order_id=(data.get("output") or {}).get("ODNO"),

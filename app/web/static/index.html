@@ -52,6 +52,11 @@
     <table><thead><tr><th>종목</th><th>점수</th><th>1M</th><th>3M</th><th></th></tr></thead>
     <tbody id="scn"><tr><td class="empty" colspan="5">계산 중(최초 ~30초)…</td></tr></tbody></table>
   </div>
+  <div class="card span2">
+    <h2>🧪 모의 자동매매 (전략 검증) <span class="mut" id="paper-st"></span></h2>
+    <table><thead><tr><th>종목</th><th>수량</th><th>현재가</th><th>수익률</th><th>평가</th></tr></thead>
+    <tbody id="paper"><tr><td class="empty" colspan="5">—</td></tr></tbody></table>
+  </div>
   <div class="card">
     <h2>리밸런싱 제안</h2>
     <table><thead><tr><th>종목</th><th>방향</th><th>수량</th><th>사유</th></tr></thead>
@@ -128,10 +133,20 @@ async function loadPred(){
      <td>${p.status}</td><td class="${cls(p.actual_return)}">${p.actual_return!=null?pct(p.actual_return):'—'}</td></tr>`).join('')
     :'<tr><td class="empty" colspan=6>예측 기록 없음 (스케줄 가동 후 누적)</td></tr>';
 }
-function loadAll(){loadPortfolio();loadProposals();loadPred();loadScreen();}
+async function loadPaper(){
+  const d=await j('/api/paper'); if(!d)return; const st=document.getElementById('paper-st');
+  st.innerHTML=`총 ${won(d.total)} `+(d.ret_pct!=null?`<span class="${cls(d.ret_pct)}">수익률 ${pct(d.ret_pct)}</span>`:'(시작 전)');
+  const b=document.getElementById('paper');
+  b.innerHTML=(d.positions&&d.positions.length)?d.positions.sort((a,b)=>b.value-a.value).map(p=>
+    `<tr><td><span class="sym">${p.symbol}</span> <span class="mut">${p.name||''}</span></td>
+     <td>${(+p.qty).toLocaleString()}</td><td>${(+p.price).toLocaleString()}</td>
+     <td class="${cls(p.pnl_pct)}">${pct(p.pnl_pct)}</td><td>${won(p.value)}</td></tr>`).join('')
+    :`<tr><td class="empty" colspan=5>${d.error?'조회 오류':'장중 자동매매 시작 후 채워짐 (현금 '+won(d.cash)+')'}</td></tr>`;
+}
+function loadAll(){loadPortfolio();loadProposals();loadPred();loadPaper();loadScreen();}
 loadAll();
 setInterval(pollQuotes,10000);                                   // 10초 라이브 시세
-setInterval(()=>{loadPortfolio();loadProposals();loadPred();},60000);  // 1분 전체
+setInterval(()=>{loadPortfolio();loadProposals();loadPred();loadPaper();},60000);  // 1분 전체
 </script>
 </body>
 </html>
