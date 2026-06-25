@@ -144,7 +144,7 @@ function renderPortfolio(){
   ST.live_total=(ST.cash||0)+ST.pos.reduce((s,p)=>s+vkrw(p),0);
   document.getElementById('pf-st').innerHTML='총 '+amt(ST.live_total)+
     (ST.total_pnl!=null?` · 전체 <span class="${cls(ST.total_pnl)}">${pct(ST.total_pnl)}${ST.total_amt!=null?' ('+samt(ST.total_amt)+')':''}</span>`:'')+
-    (ST.daily!=null?` · 오늘 <span class="${cls(ST.daily)}">${pct(ST.daily)}</span>`:'');
+    (ST.daily!=null?` · 오늘 <span class="${cls(ST.daily)}">${pct(ST.daily)}${ST.daily_amt!=null?' ('+samt(ST.daily_amt)+')':''}</span>`:'');
   updateHeader();
 }
 function updateHeader(){
