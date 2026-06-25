@@ -197,28 +197,35 @@ class KISBroker(BrokerAdapter):
 
     # ---------- 해외(미국) ----------
     def get_overseas_balance(self) -> Balance:
-        """해외 체결기준현재잔고. USD 보유 + 총자산(KRW, 통합증거금 기준)."""
-        tr = "VTRP6504R" if self.paper else "CTRP6504R"
-        resp = self._get(
-            "/uapi/overseas-stock/v1/trading/inquire-present-balance",
-            self._headers(tr),
-            {"CANO": self.cano, "ACNT_PRDT_CD": self.prod, "WCRC_FRCR_DVSN_CD": "02",
-             "NATN_CD": "840", "TR_MKET_CD": "00", "INQR_DVSN_CD": "00"})
-        resp.raise_for_status()
-        data = resp.json()
-        positions = []
-        for r in data.get("output1", []) or []:
-            qty = float(r.get("ccld_qty_smtl1") or r.get("cblc_qty13") or 0)
-            if qty <= 0:
-                continue
-            pur = float(r.get("frcr_pchs_amt") or 0)        # USD 매입총액
-            evl = float(r.get("frcr_evlu_amt2") or 0)       # USD 평가총액(결제중 0)
-            avg = pur / qty if qty else 0
-            cur = evl / qty if evl > 0 else avg             # 평가 미반영시 매입가
-            positions.append(Position(
-                symbol=r.get("pdno", ""), name=r.get("prdt_name", ""),
-                qty=qty, avg_price=avg, current_price=cur, currency="USD"))
-        return Balance(cash=0.0, total_eval=0.0, positions=positions)
+        """해외 잔고(체결 반영). inquire-balance(VTTS3012R/TTTS3012R) 사용.
+        ※ present-balance(VTRP6504R)는 모의서 체결수량을 0으로 반환해 보유 누락 →
+          inquire-balance가 ovrs_cblc_qty로 실보유를 정확히 반환(체결 즉시 반영).
+          거래소 필터가 모의서 무시되어 전체를 반환하므로 심볼로 머지·중복제거."""
+        tr = "VTTS3012R" if self.paper else "TTTS3012R"
+        merged: dict[str, Position] = {}
+        for exc in ("NASD", "NYSE", "AMEX"):
+            resp = self._get(
+                "/uapi/overseas-stock/v1/trading/inquire-balance",
+                self._headers(tr),
+                {"CANO": self.cano, "ACNT_PRDT_CD": self.prod, "OVRS_EXCG_CD": exc,
+                 "TR_CRCY_CD": "USD", "CTX_AREA_FK200": "", "CTX_AREA_NK200": ""})
+            resp.raise_for_status()
+            body = resp.json()
+            # 계좌레벨 에러(예: 미니스탁/소수점 INVALID_CHECK_ACNO)는 거래소 반복 무의미 → 중단
+            if body.get("rt_cd") not in ("0", None):
+                break
+            for r in body.get("output1", []) or []:
+                sym = r.get("ovrs_pdno", "")
+                qty = float(r.get("ovrs_cblc_qty") or 0)
+                if not sym or qty <= 0 or sym in merged:
+                    continue
+                merged[sym] = Position(
+                    symbol=sym, name=r.get("ovrs_item_name", ""), qty=qty,
+                    avg_price=float(r.get("pchs_avg_pric") or 0),
+                    current_price=float(r.get("now_pric2") or 0),
+                    currency="USD")
+            time.sleep(0.2)
+        return Balance(cash=0.0, total_eval=0.0, positions=list(merged.values()))
 
     def place_overseas_order(self, symbol: str, side: Side, qty: int, price: float,
                              exchange: str | None = None) -> OrderResult:
