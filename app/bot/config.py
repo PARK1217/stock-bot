@@ -30,7 +30,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
 
     # notify
-    telegram_bot_token: str = ""
+    discord_webhook_url: str = ""   # 디스코드 알림(웹훅 URL 하나면 끝)
+    telegram_bot_token: str = ""    # (폴백)
     telegram_chat_id: str = ""
 
     # news / sentiment

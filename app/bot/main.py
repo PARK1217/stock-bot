@@ -25,7 +25,7 @@ from sqlalchemy import cast, Date
 from bot.brokers import get_broker
 from bot.brokers.base import Side
 from bot.config import settings
-from bot.notify.telegram import notify
+from bot.notify import notify
 from bot.storage.db import SessionLocal, init_db
 from bot.storage.models import DailySnapshot, OrderLog, Proposal
 from bot.strategies.dividend_core import DividendCoreStrategy
