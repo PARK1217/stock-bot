@@ -115,6 +115,22 @@ class KISBroker(BrokerAdapter):
             return r
         return r
 
+    @staticmethod
+    def _rate_limited(data: dict) -> bool:
+        """초당거래 초과(EGW00201 / msg1 '초당...') 판정."""
+        return (data.get("msg_cd") == "EGW00201"
+                or "초당" in (data.get("msg1") or ""))
+
+    def _rate_limited_exc(self, exc: Exception) -> bool:
+        """예외(주로 _hashkey의 5xx)가 레이트리밋인지."""
+        resp = getattr(exc, "response", None)
+        if resp is None:
+            return False
+        try:
+            return self._rate_limited(resp.json())
+        except Exception:  # noqa: BLE001
+            return False
+
     # ---------- market ----------
     def get_price(self, symbol: str) -> float:
         resp = self._get(
@@ -267,20 +283,27 @@ class KISBroker(BrokerAdapter):
                     "PDNO": symbol, "ORD_QTY": str(int(qty)),
                     "OVRS_ORD_UNPR": f"{price:.2f}", "ORD_SVR_DVSN_CD": "0",
                     "ORD_DVSN": "00"}
-            try:
-                hk = self._hashkey(body)
-                resp = self._client.post("/uapi/overseas-stock/v1/trading/order",
-                                         headers=self._headers(tr, hashkey=hk), json=body)
-                data = resp.json()
-            except (httpx.HTTPError, ValueError) as e:
-                last = str(e)
-                time.sleep(0.4)
-                continue
-            if data.get("rt_cd") == "0":
+            data = None
+            for attempt in range(4):                       # 레이트리밋 백오프 재시도
+                try:
+                    hk = self._hashkey(body)
+                    resp = self._client.post("/uapi/overseas-stock/v1/trading/order",
+                                             headers=self._headers(tr, hashkey=hk), json=body)
+                    data = resp.json()
+                except (httpx.HTTPError, ValueError) as e:
+                    last = str(e)
+                    if self._rate_limited_exc(e) and attempt < 3:
+                        time.sleep(0.6 * (attempt + 1)); continue
+                    data = None; break
+                if data.get("rt_cd") != "0" and self._rate_limited(data) and attempt < 3:
+                    time.sleep(0.6 * (attempt + 1)); continue
+                break
+            if data and data.get("rt_cd") == "0":
                 self._redis.set(f"kis:exch:{symbol}", exc, ex=604800)
                 return OrderResult(ok=True, order_id=(data.get("output") or {}).get("ODNO"),
                                    message=data.get("msg1", ""), raw=data)
-            last = data.get("msg1", "")
+            if data is not None:
+                last = data.get("msg1", "")               # 거래소별 거절(다음 거래소 시도)
             time.sleep(0.4)
         return OrderResult(ok=False, message=last)
 
@@ -298,17 +321,24 @@ class KISBroker(BrokerAdapter):
             "ORD_QTY": str(qty),
             "ORD_UNPR": "0" if price is None else str(int(price)),
         }
-        try:
-            hashkey = self._hashkey(body)
-            resp = self._client.post(
-                "/uapi/domestic-stock/v1/trading/order-cash",
-                headers=self._headers(tr_id, hashkey=hashkey),
-                json=body,
-            )
-            data = resp.json()  # KIS는 거절(장마감 등)도 본문에 msg1 담아 5xx로 줌
-        except (httpx.HTTPError, ValueError) as e:
-            log.warning("KIS 주문 통신실패: %s", e)
-            return OrderResult(ok=False, message=str(e))
+        data = None
+        for attempt in range(4):                          # 레이트리밋 백오프 재시도
+            try:
+                hashkey = self._hashkey(body)
+                resp = self._client.post(
+                    "/uapi/domestic-stock/v1/trading/order-cash",
+                    headers=self._headers(tr_id, hashkey=hashkey),
+                    json=body,
+                )
+                data = resp.json()  # KIS는 거절(장마감 등)도 본문에 msg1 담아 5xx로 줌
+            except (httpx.HTTPError, ValueError) as e:
+                if self._rate_limited_exc(e) and attempt < 3:
+                    time.sleep(0.6 * (attempt + 1)); continue
+                log.warning("KIS 주문 통신실패: %s", e)
+                return OrderResult(ok=False, message=str(e))
+            if data.get("rt_cd") != "0" and self._rate_limited(data) and attempt < 3:
+                time.sleep(0.6 * (attempt + 1)); continue
+            break
 
         ok = data.get("rt_cd") == "0"
         if not ok:
