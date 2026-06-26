@@ -841,6 +841,11 @@ if (_STATIC / "index.html").exists():
     def index():
         return FileResponse(_STATIC / "index.html")
 
+if (_STATIC / "admin.html").exists():
+    @app.get("/admin")
+    def admin():                                   # 검증·평가 관리자 페이지(별도 URL)
+        return FileResponse(_STATIC / "admin.html")
+
 
 @app.get("/sw.js")
 def service_worker():

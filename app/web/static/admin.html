@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>스탁봇 · 검증·평가</title>
+<style>
+  :root{--bg:#0f1115;--card:#1a1d24;--line:#2a2f3a;--fg:#e6e9ef;--mut:#8b93a3;
+        --up:#27c281;--down:#ff5c6c;--accent:#4c8dff;--warn:#ffb454;--gold:#e0b257;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-size:14px;-webkit-text-size-adjust:100%;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .mut{color:var(--mut)} .up{color:var(--up)} .down{color:var(--down)}
+  .num{font-variant-numeric:tabular-nums}
+  header{padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top));border-bottom:1px solid var(--line);
+    position:sticky;top:0;background:rgba(15,17,21,.96);backdrop-filter:blur(8px);z-index:5;
+    display:flex;align-items:center;gap:10px}
+  header h1{font-size:17px;margin:0}
+  .back{margin-left:auto;background:#222834;color:var(--fg);border:1px solid var(--line);border-radius:8px;
+    padding:6px 12px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none}
+  .wrap{padding:14px;display:grid;gap:14px;grid-template-columns:1fr;max-width:1100px;margin:0 auto;
+    padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+  @media(min-width:880px){.wrap{grid-template-columns:1fr 1fr}.span2{grid-column:1/-1}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .card>h2{font-size:13.5px;margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
+    display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:600}
+  .card>h2 .sub{font-size:11.5px;font-weight:400;color:var(--mut);text-align:right}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .row-l{min-width:0;flex:1} .row-t{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .row-s{font-size:12px;color:var(--mut);margin-top:3px}
+  .row-r{text-align:right;white-space:nowrap;flex-shrink:0}
+  .row-r .v{font-size:13.5px;font-weight:600} .row-r .v2{font-size:12px;margin-top:2px}
+  .sym{font-weight:700;letter-spacing:.2px} .nm{font-weight:400;color:var(--mut);font-size:12.5px}
+  .tag{font-size:10.5px;padding:1px 6px;border-radius:5px;background:#222834;color:var(--mut);font-weight:600}
+  .tag.al{background:#1f3326;color:#5fd6a0} .tag.hit{background:#173a2c;color:var(--up)} .tag.miss{background:#3a1a1f;color:var(--down)}
+  .grp{padding:9px 14px;background:#222834;display:flex;justify-content:space-between;align-items:center;font-weight:600;border-bottom:1px solid var(--line)}
+  .empty{padding:20px 14px;color:var(--mut);text-align:center;font-size:13px}
+  .help-box{padding:11px 14px;border-bottom:1px solid var(--line);font-size:12px;line-height:1.65;color:#b8bfca;background:#15181e}
+  .big{display:flex;gap:18px;padding:14px;flex-wrap:wrap}
+  .big .k{font-size:11px;color:var(--mut)} .big .val{font-size:22px;font-weight:700}
+  .bar{height:6px;background:#2a2f3a;border-radius:3px;overflow:hidden;width:90px;display:inline-block;vertical-align:middle}
+  .bar>i{display:block;height:100%}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎯 검증·평가 <span class="mut" style="font-size:12px;font-weight:400">관리자</span></h1>
+  <a class="back" href="/">← 대시보드</a>
+</header>
+<div class="wrap">
+  <div class="card span2">
+    <h2>📊 예측 검증 (21일) <span class="sub" id="vf-st">로딩…</span></h2>
+    <div class="help-box">매일 <b>21일 뒤</b> 가격을 예측하고, 21일이 지나면 <b>실제로 맞았는지 스스로 채점</b>합니다.
+      <b>방향</b>(오를지/내릴지)·<b>범위</b>(예측 범위 안에 들었는지) 적중률로 이 예측을 얼마나 믿을지 가늠해요.</div>
+    <div class="big" id="vf-sum"></div>
+    <div id="vf-bysym"></div>
+  </div>
+
+  <div class="card span2">
+    <h2>✅ 검증 완료 <span class="sub" id="vf-evc"></span></h2>
+    <div id="vf-ev"><div class="empty">로딩…</div></div>
+  </div>
+
+  <div class="card span2">
+    <h2>⏳ 진행 중 <span class="sub" id="vf-opc"></span></h2>
+    <div id="vf-op"><div class="empty">로딩…</div></div>
+  </div>
+
+  <div class="card span2">
+    <h2>💬 챗봇 정확도 <span class="sub mut">준비 중</span></h2>
+    <div class="empty">챗봇이 한 매수·매도/상승·하락 콜을 기록해 21일 뒤 채점하는 기능을 준비 중이에요.</div>
+  </div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+async function j(u){try{const r=await fetch(u,{credentials:'same-origin'});if(r.status===401){location.reload();return null}return r.ok?r.json():null;}catch(e){return null}}
+const nf=(n,d=2)=>n==null?'—':(+n).toLocaleString(undefined,{maximumFractionDigits:d});
+const pct=n=>n==null?'—':(n>=0?'+':'')+(+n).toFixed(2)+'%';
+const cls=n=>n==null?'mut':(n>=0?'up':'down');
+let NAMES={};
+function nm(s){const n=NAMES[s];return n?` <span class="nm">${n}</span>`:'';}
+async function load(){
+  const nd=await j('/api/names'); if(nd&&nd.names)NAMES=nd.names;
+  const [d,a]=await Promise.all([j('/api/predictions'),j('/api/accuracy')]);
+  if(!d){$('vf-st').textContent='실패';return;}
+  const ev=d.filter(p=>p.status==='evaluated'), op=d.filter(p=>p.status==='open');
+  $('vf-st').textContent=`총 ${d.length}건`;
+  // 요약
+  if(a&&a.evaluated){
+    $('vf-sum').innerHTML=
+      `<div><div class="k">방향 적중률</div><div class="val ${a.dir_acc>=0.5?'up':'down'}">${Math.round(a.dir_acc*100)}%</div></div>`
+     +`<div><div class="k">범위 적중률</div><div class="val">${Math.round(a.band_acc*100)}%</div></div>`
+     +`<div><div class="k">채점 표본</div><div class="val">${a.evaluated}건</div></div>`;
+  }else $('vf-sum').innerHTML='<div class="mut" style="padding:0 0 4px">아직 채점된 예측이 없어요 — 예측이 21일 지나면 채워집니다.</div>';
+  // 종목별 적중 집계
+  const by={};
+  ev.forEach(p=>{const s=by[p.symbol]||(by[p.symbol]={n:0,hit:0});s.n++;if(p.dir_hit)s.hit++;});
+  const syms=Object.keys(by).sort((x,y)=>by[y].n-by[x].n);
+  $('vf-bysym').innerHTML=syms.length?('<div class="grp"><span>종목별 방향 적중률</span><span class="mut" style="font-weight:400;font-size:11px">표본 많을수록 신뢰</span></div>'
+    +syms.map(s=>{const r=by[s],acc=r.hit/r.n,c=acc>=0.5?'var(--up)':'var(--down)';
+      return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${s}</span>${nm(s)}</div></div>
+        <div class="row-r"><span class="bar"><i style="width:${Math.round(acc*100)}%;background:${c}"></i></span>
+          <span class="v num" style="margin-left:8px;color:${c}">${Math.round(acc*100)}%</span>
+          <div class="v2 mut">${r.hit}/${r.n} 적중</div></div></div>`;}).join('')):'';
+  // 검증완료
+  $('vf-evc').textContent=ev.length+'건';
+  $('vf-ev').innerHTML=ev.length?ev.slice(0,80).map(p=>{const up=p.prob_up>=0.5;
+    return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)}
+        ${p.dir_hit?'<span class="tag hit">적중</span>':'<span class="tag miss">빗나감</span>'}${p.band_hit?'<span class="tag al">범위적중</span>':''}</div>
+      <div class="row-s num">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(기대 ${pct(p.exp_return)}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div></div></div>`;}).join('')
+    :'<div class="empty">아직 채점된 예측이 없어요 (예측이 21일 지나면 채점)</div>';
+  // 진행중
+  $('vf-opc').textContent=op.length+'건';
+  $('vf-op').innerHTML=op.length?op.slice(0,120).map(p=>{const up=p.prob_up>=0.5;
+    return `<div class="row" style="opacity:.9"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)}</div>
+      <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b>${up?'▲상승':'▼하락'}</b>(기대 ${pct(p.exp_return)})</div></div>
+      <div class="row-r"><div class="v num">${Math.round(p.prob_up*100)}%</div><div class="v2 mut">상승확률</div></div></div>`;}).join('')
+    :'<div class="empty">진행 중 예측 없음</div>';
+}
+load();
+setInterval(load,60000);
+</script>
+</body>
+</html>
