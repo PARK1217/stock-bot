@@ -410,24 +410,39 @@ def paper():
     from bot.brokers.toss import TossBroker
     out = {"cash": 0, "total": 0, "positions": [], "history": [], "ret_pct": None}
     fx = 1540.0
+    # KR·US 잔고를 독립적으로 조회 — KIS 모의 국내(inquire-balance)가 간헐 500을 내도
+    # US 보유까지 통째로 0이 되지 않게 분리(한쪽 실패해도 나머지는 표시).
+    kr_pos, us_pos, errs = [], [], []
+    kr_pnl = us_pnl = 0.0
+    kis = None
     try:
         kis = KISBroker(paper=True)
         fx = TossBroker().usdkrw() or 1540.0
-        kbal = kis.get_balance()                 # KR
-        obal = kis.get_overseas_balance()        # US
-        kr_pnl = sum((p.current_price - p.avg_price) * p.qty for p in kbal.positions)
-        us_pnl = sum((p.current_price - p.avg_price) * p.qty for p in obal.positions) * fx
+    except Exception as e:  # noqa: BLE001
+        errs.append(f"init:{str(e)[:120]}")
+    if kis is not None:
+        try:
+            kr_pos = kis.get_balance().positions                     # KR
+            kr_pnl = sum((p.current_price - p.avg_price) * p.qty for p in kr_pos)
+        except Exception as e:  # noqa: BLE001  (KIS 모의 국내 간헐 500)
+            errs.append(f"KR:{str(e)[:120]}")
+        try:
+            us_pos = kis.get_overseas_balance().positions            # US
+            us_pnl = sum((p.current_price - p.avg_price) * p.qty for p in us_pos) * fx
+        except Exception as e:  # noqa: BLE001
+            errs.append(f"US:{str(e)[:120]}")
+    if kr_pos or us_pos or not errs:
         total = 500_000_000 + kr_pnl + us_pnl    # 초기 5억 + 손익(통합증거금 이중계산 방지)
         out["total"] = total
         out["positions"] = [{
             "symbol": p.symbol, "name": p.name, "qty": p.qty, "market": "KR",
             "price": p.current_price, "pnl_pct": round(p.pnl_pct, 2),
             "value_krw": p.market_value,
-        } for p in kbal.positions] + [{
+        } for p in kr_pos] + [{
             "symbol": p.symbol, "name": p.name, "qty": p.qty, "market": "US",
             "price": p.current_price, "pnl_pct": round(p.pnl_pct, 2),
             "value_krw": p.market_value * fx,
-        } for p in obal.positions]
+        } for p in us_pos]
         # 통합증거금 계좌라 dnca(kbal.cash)는 US 매수해도 5억 그대로 → 부정확.
         # 가용현금 = 총자산 - 보유평가합 으로 일관 계산(이중표시 방지).
         out["invested"] = sum(p["value_krw"] for p in out["positions"])
@@ -440,15 +455,15 @@ def paper():
             for p in out["positions"]:                    # 보유에 코어/새틀/이탈 태그
                 p["bucket"] = ("core" if p["symbol"] in core else
                                "sat" if p["symbol"] in sat else "exit")
-    except Exception as e:  # noqa: BLE001
-        out["error"] = str(e)
+    if errs:                                              # 부분/전체 실패 표시(US만 떠도 KR오류 노출)
+        out["error"] = " · ".join(errs)
     with SessionLocal() as s:
         snaps = s.query(PaperSnapshot).order_by(PaperSnapshot.id.desc()).limit(90).all()
         out["history"] = [{"ts": str(x.ts), "total": x.total_eval}
                           for x in reversed(snaps)]
     if out["total"]:
         out["ret_pct"] = round((out["total"] / 500_000_000 - 1) * 100, 2)  # 초기 5억
-    _cache_set("web:paper", out, 30)
+    _cache_set("web:paper", out, 30 if out["total"] else 5)   # 실패 시 짧게 캐싱→빠른 회복
     return out
 
 

@@ -102,16 +102,22 @@ class KISBroker(BrokerAdapter):
         return resp.json()["HASH"]
 
     def _get(self, path: str, headers: dict, params: dict):
-        """초당거래 초과(EGW00201) 시 간격두고 재시도."""
+        """초당거래 초과(EGW00201) 재시도 + 만료토큰(EGW00123) 자가복구.
+        KIS는 만료 토큰에 HTTP 500+EGW00123을 주므로, 캐시 폐기 후 새 토큰으로 재시도."""
         r = None
         for _ in range(5):
             r = self._client.get(path, headers=headers, params=params)
             try:
-                if r.json().get("msg_cd") == "EGW00201":
-                    time.sleep(0.7)
-                    continue
+                mc = r.json().get("msg_cd")
             except ValueError:
-                pass
+                mc = None
+            if mc == "EGW00201":                     # 초당거래 초과
+                time.sleep(0.7)
+                continue
+            if mc == "EGW00123":                     # 만료 토큰 → 캐시 폐기·갱신 후 재시도
+                self._redis.delete(self._token_key)
+                headers = {**headers, "authorization": f"Bearer {self._access_token()}"}
+                continue
             return r
         return r
 
