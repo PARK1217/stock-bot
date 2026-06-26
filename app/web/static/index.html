@@ -487,7 +487,7 @@ function renderTrades(){
     const fp=t.fill_price!=null?` @${nf(t.fill_price)}${t.market==='US'?'$':''}`:'';
     const amtv=t.amount_krw!=null?amt(t.amount_krw):'<span class="mut">—</span>';
     return `<div class="row"><div class="row-l"><div class="row-t">
-        <span class="tag ${buy?'buy':'sell'}">${buy?'매수':'매도'}</span> ${mkt(t.market)} <span class="sym">${t.symbol}</span></div>
+        <span class="tag ${buy?'buy':'sell'}">${buy?'매수':'매도'}</span> ${mkt(t.market)} <span class="sym">${t.symbol}</span>${nmTag(t.symbol)}</div>
        <div class="row-s num">${ts} · ${qd}주${fp}</div></div>
      <div class="row-r"><div class="v st st-${t.status} num">${ic[t.status]||''} ${t.status}${t.note?` <span class="mut" style="font-weight:400;font-size:11px">(${t.note})</span>`:''}</div>
        <div class="v2 mut num">${amtv}</div></div></div>`;}).join('')
