@@ -15,15 +15,40 @@ import logging
 import time
 from datetime import datetime
 
+import redis
+
 from bot.brokers.base import Side
 from bot.brokers.kis import KISBroker
 from bot.brokers.toss import TossBroker
+from bot.config import settings
 from bot.forecast import forecast_symbol
 from bot.screener import score_symbol
 from bot.storage.db import SessionLocal
 from bot.storage.models import OrderLog, PaperSnapshot
 
 log = logging.getLogger(__name__)
+_redis = redis.from_url(settings.redis_url)
+NEWS_BLOCK = -0.25            # 뉴스 틸트 이 값 미만이면 강한 악재 → 후보 제외
+
+
+def _news_tilt(sym: str, market: str) -> float:
+    """종목 뉴스 감성 틸트(score×confidence, -1~1). 4h redis 캐시."""
+    key = f"paper:news:{sym}"
+    c = _redis.get(key)
+    if c is not None:
+        try:
+            return float(c)
+        except (TypeError, ValueError):
+            pass
+    tilt = 0.0
+    try:
+        from bot.news import get_sentiment
+        ns = get_sentiment(sym, market)
+        tilt = max(-1.0, min(1.0, ns.score * ns.confidence))
+    except Exception:  # noqa: BLE001
+        tilt = 0.0
+    _redis.set(key, tilt, ex=14400)
+    return tilt
 
 # 코어 = 우량 지수·배당 ETF(안정). 새틀라이트 = 고변동(추세 탈 때만).
 CORE_KR = ["458730", "360750", "133690", "069500", "379800", "161510", "329200"]
@@ -53,30 +78,35 @@ def _open_market() -> str | None:
     return None
 
 
-def _combined_score(sym: str, closes: list[float]):
-    """스크리너 점수 + 예측 상승확률 종합."""
+def _combined_score(sym: str, closes: list[float], news_tilt: float = 0.0):
+    """스크리너 점수 + 예측 상승확률 + 뉴스 감성 종합."""
     sc = score_symbol(sym, [{"close": c} for c in closes])
     if not sc:
         return None
     fc = forecast_symbol(sym, closes, 21,
                          technical_tilt=max(-1, min(1, sc.score / 25)),
-                         news_sentiment=0)
+                         news_sentiment=news_tilt)
     prob = fc.prob_up if fc else 0.5
-    return sc.score + (prob - 0.5) * 100
+    return sc.score + (prob - 0.5) * 100 + news_tilt * 15     # 뉴스 가중
 
 
 def _rank_pool(pool, market, get_candles) -> list[dict]:
-    """풀 내 종목 중 '추세 in(MA50 위)'만 후보로, 종합점수순 정렬."""
+    """추세 in(MA50 위) + 강한 악재 아닌 종목만 후보로, 종합점수순 정렬."""
     out = []
     for sym in pool:
         try:
             closes = [c["close"] for c in get_candles(sym, "1d", 200) if c["close"] > 0]
         except Exception:  # noqa: BLE001
             continue
-        if len(closes) >= TREND_MA + 5 and _trend_ok(closes):     # 추세 필터
-            s = _combined_score(sym, closes)
-            if s is not None:
-                out.append({"symbol": sym, "market": market, "score": s, "price": closes[-1]})
+        if len(closes) < TREND_MA + 5 or not _trend_ok(closes):   # 추세 필터
+            continue
+        tilt = _news_tilt(sym, market)
+        if tilt < NEWS_BLOCK:                                     # 강한 악재 → 제외
+            log.info("뉴스 악재로 제외: %s tilt=%.2f", sym, tilt)
+            continue
+        s = _combined_score(sym, closes, tilt)
+        if s is not None:
+            out.append({"symbol": sym, "market": market, "score": s, "price": closes[-1]})
     out.sort(key=lambda x: x["score"], reverse=True)
     return out
 
