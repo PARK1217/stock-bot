@@ -575,6 +575,14 @@ def _chat_context() -> str:
                      f"MA50 추세 꺾인 종목은 매도·현금화. 점수추격/단타는 검증상 손해라 안 씀.")
     except Exception:  # noqa: BLE001
         pass
+    try:
+        ex = exposure()
+        if ex.get("top"):
+            L.append("[실질 노출(ETF 룩스루): 상위5 " + str(ex["top5_pct"]) + "% 집중 — "
+                     + ", ".join(f"{t['symbol']} {t['pct']}%" for t in ex["top"][:6])
+                     + ". 여러 ETF여도 실제론 이 기업들에 노출(분산 착시 주의)]")
+    except Exception:  # noqa: BLE001
+        pass
     L.append("[계좌 매매제약] 연금저축=국내상장 ETF/ETN·비레버리지만(해외상장·개별주·레버리지 불가). "
              "ISA중개형=국내상장 개별주/ETF(해외상장 직접불가, 순이익500만 비과세). 소수점=해외포함 자유. "
              "토스(미국)=현금 거의 없어 신규매수 여력 적음. 교체는 같은 계좌 안에서만(계좌간 이동 시 연금 페널티·ISA혜택 손실).")
