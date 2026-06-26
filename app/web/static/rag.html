@@ -148,10 +148,17 @@ async function loadChat(){
     return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${c.symbol}</span>${nm(c.symbol)}
         <span class="tag ${up?'up':'down'}">${up?'▲매수/상승':'▼매도/하락'}</span></div>
       <div class="row-s num">${(c.ts||'').slice(0,10)} · 당시 ${nf(c.base_price)} ${res}</div></div></div>`;}).join('')):'';
-  $('ce-log').innerHTML=log.length?log.slice(0,40).map(l=>
-    `<div class="qa"><div class="q">Q. ${esc(l.q)}</div><div class="a">${esc((l.a||'').slice(0,400))}${(l.a||'').length>400?'…':''}</div>
-       <div class="mut" style="font-size:11px;margin-top:4px">${(l.ts||'').slice(0,16).replace('T',' ')}${l.who==='spouse'?' · 남편':''}</div></div>`).join('')
-    :'<div class="empty">대화 기록 없음</div>';
+  $('ce-log').innerHTML=log.length?log.slice(0,30).map(l=>{
+    const q=l.user_msg||l.q||'', a=l.reply||l.a||'', u=l.usage||{};
+    const tok=(u.total!=null)?`토큰 ${u.total} (입력 ${u.prompt!=null?u.prompt:'?'}·출력 ${u.completion!=null?u.completion:'?'})`:'토큰 정보 없음';
+    return `<div class="qa">
+      <div class="q">Q. ${esc(q)}</div>
+      <div class="a">${esc(a.slice(0,500))}${a.length>500?'…':''}</div>
+      <div class="mut" style="font-size:11px;margin-top:5px">${(l.ts||'').slice(0,16).replace('T',' ')}${l.who==='spouse'?' · 남편':''} · ${esc(l.model||'?')} · ${tok}</div>
+      ${l.system_prompt?`<details style="margin-top:6px"><summary class="mut" style="cursor:pointer;font-size:11.5px">🧩 시스템 프롬프트 보기</summary><pre style="white-space:pre-wrap;font-size:11px;color:#9aa3b2;margin:6px 0 0">${esc(l.system_prompt)}</pre></details>`:''}
+      ${l.sources?`<details style="margin-top:4px"><summary class="mut" style="cursor:pointer;font-size:11.5px">📚 근거 데이터(어디서 가져왔나)</summary><pre style="white-space:pre-wrap;font-size:11px;color:#9aa3b2;margin:6px 0 0">${esc(l.sources)}</pre></details>`:''}
+    </div>`;}).join('')
+    :'<div class="empty">대화 기록 없음 — 챗봇에 질문하면 여기 전부 기록됩니다</div>';
 }
 async function load(){
   const nd=await j('/api/names'); if(nd&&nd.names)NAMES=nd.names;

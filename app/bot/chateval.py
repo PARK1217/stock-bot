@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from datetime import datetime, timedelta
 
+import httpx
 import redis
 
 from bot.config import settings
@@ -87,6 +89,69 @@ def log_interaction(question: str, reply: str, who: str, known: list[str]) -> in
                "q": question[:120]}
         try:
             _r.lpush(_CALLS, json.dumps(rec))
+            n += 1
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        _r.ltrim(_CALLS, 0, 499)
+    except Exception:  # noqa: BLE001
+        pass
+    return n
+
+
+def llm_call(prompt: str, max_tokens: int = 900) -> dict:
+    """챗봇 LLM 호출(Groq→Mistral) — 토큰 usage·모델까지 반환.
+    반환 {text, usage:{prompt,completion,total}, model, provider}."""
+    provs = []
+    if settings.groq_api_key:
+        provs.append(("groq", settings.groq_base_url, settings.groq_api_key, settings.groq_model))
+    if settings.mistral_api_key:
+        provs.append(("mistral", settings.mistral_base_url, settings.mistral_api_key, settings.mistral_model))
+    for name, base, key, model in provs:
+        for attempt in range(3):
+            try:
+                r = httpx.post(f"{base}/chat/completions",
+                               headers={"Authorization": f"Bearer {key}"},
+                               json={"model": model, "max_tokens": max_tokens, "temperature": 0,
+                                     "messages": [{"role": "user", "content": prompt}]},
+                               timeout=30)
+                if r.status_code in (429, 500, 502, 503, 504):
+                    time.sleep(0.6 * (attempt + 1)); continue
+                if r.status_code in (401, 403, 404, 400):
+                    break
+                r.raise_for_status()
+                j = r.json()
+                u = j.get("usage") or {}
+                return {"text": j["choices"][0]["message"]["content"],
+                        "usage": {"prompt": u.get("prompt_tokens"), "completion": u.get("completion_tokens"),
+                                  "total": u.get("total_tokens")},
+                        "model": model, "provider": name}
+            except (httpx.HTTPError, KeyError, IndexError):
+                time.sleep(0.4 * (attempt + 1))
+    return {"text": None, "usage": {}, "model": None, "provider": None}
+
+
+def log_chat(question: str, system_prompt: str, context: str, reply: str,
+             usage: dict, model: str, provider: str, who: str, known: list[str]) -> int:
+    """챗봇 1회 상호작용 풀로깅(시스템프롬프트·사용자질문·소스·답변·토큰·모델) + 콜 추출."""
+    ts = datetime.now().isoformat()
+    rec = {"ts": ts, "who": who, "model": model, "provider": provider,
+           "user_msg": (question or "")[:1200], "system_prompt": (system_prompt or "")[:4500],
+           "sources": (context or "")[:7000], "reply": (reply or "")[:3500], "usage": usage or {}}
+    try:
+        _r.lpush(_LOG, json.dumps(rec, ensure_ascii=False))
+        _r.ltrim(_LOG, 0, 99)
+    except Exception:  # noqa: BLE001
+        pass
+    n = 0
+    for c in extract_calls(reply or "", known):
+        bp = _price(c["symbol"])
+        if bp <= 0:
+            continue
+        try:
+            _r.lpush(_CALLS, json.dumps({"ts": ts, "symbol": c["symbol"], "direction": c["direction"],
+                                         "base_price": round(bp, 4), "horizon": HORIZON,
+                                         "status": "open", "q": (question or "")[:120]}))
             n += 1
         except Exception:  # noqa: BLE001
             pass
