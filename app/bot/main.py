@@ -191,6 +191,7 @@ def cmd_news_warm(session: str = "") -> None:
     from bot import news
     from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST
     from bot.storage.models import NewsIssue
+    from bot.brokers.kis import KISBroker
     r = redis.from_url(settings.redis_url)
     now = datetime.now()                       # 컨테이너 TZ=Asia/Seoul
     if not session:
@@ -200,29 +201,54 @@ def cmd_news_warm(session: str = "") -> None:
                    "US-중반" if 1 <= h < 3 else "US-후반")
     day = now.strftime("%Y-%m-%d")
     # 유니버스: US 실보유 + US 워치 + KR 워치
+    us_broker = get_broker()
     us = []
     try:
-        us = [p.symbol for p in get_broker().get_balance().positions]
+        us = [p.symbol for p in us_broker.get_balance().positions]
     except Exception:  # noqa: BLE001
         pass
     us = list(dict.fromkeys(us + DEFAULT_WATCHLIST))
     universe = [(s, "US") for s in us] + [(s, "KR") for s in KR_WATCHLIST]
+    try:
+        kis = KISBroker(account=("63776023", "01"), paper=False)   # KR 일봉 시세
+    except Exception:  # noqa: BLE001
+        kis = None
+
+    def _recent_rets(sym, mkt):
+        """최근 종가로 1일·5일(≈1주) 수익률(%) 반환. 실패 시 (None, None)."""
+        try:
+            br = us_broker if mkt == "US" else kis
+            if br is None:
+                return None, None
+            cl = [c["close"] for c in br.get_candles(sym, "1d", 12) if c["close"] > 0]
+            if len(cl) < 2:
+                return None, None
+            r1 = (cl[-1] / cl[-2] - 1) * 100
+            r5 = (cl[-1] / cl[-6] - 1) * 100 if len(cl) >= 6 else None
+            return round(r1, 2), (round(r5, 2) if r5 is not None else None)
+        except Exception:  # noqa: BLE001
+            return None, None
+
     n = 0
     with SessionLocal() as sess:
         for sym, mkt in universe:
             try:
                 ns = news.get_sentiment(sym, mkt)
                 pol = news.polarity(ns.score)
+                r1, r5 = _recent_rets(sym, mkt)
+                imp = news.issue_impact(pol, r5)
                 r.set(f"web:news:{sym}", json.dumps(
                     {"symbol": sym, "score": round(ns.score, 2), "polarity": pol,
-                     "summary": ns.summary, "sources": ns.sources}, ensure_ascii=False),
+                     "summary": ns.summary, "sources": ns.sources,
+                     "ret_1d": r1, "ret_5d": r5, "impact": imp}, ensure_ascii=False),
                     ex=5 * 3600)
                 if ns.sources > 0:             # 기사 있는 것만 히스토리 적재
                     sess.add(NewsIssue(
                         date=day, session=session, symbol=sym, market=mkt,
                         score=round(ns.score, 3), polarity=pol,
                         confidence=round(ns.confidence, 3),
-                        summary=(ns.summary or "")[:580], sources=ns.sources))
+                        summary=(ns.summary or "")[:580], sources=ns.sources,
+                        ret_1d=r1, ret_5d=r5, impact=imp))
                     n += 1
             except Exception:  # noqa: BLE001
                 pass

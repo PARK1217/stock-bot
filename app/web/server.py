@@ -185,6 +185,7 @@ def issues(days: int = 14):
         out.append({"date": r.date, "session": r.session, "symbol": r.symbol,
                     "market": r.market, "score": r.score, "polarity": r.polarity,
                     "summary": r.summary, "sources": r.sources,
+                    "ret_1d": r.ret_1d, "ret_5d": r.ret_5d, "impact": r.impact,
                     "ts": r.ts.isoformat() if r.ts else ""})
     return out
 

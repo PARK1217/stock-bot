@@ -176,6 +176,14 @@ function polTag(p){
   if(p==='부정')return '<span class="tag down">🔴 부정</span>';
   return '<span class="tag">⚪ 중립</span>';
 }
+function impTag(imp){
+  if(!imp)return '';
+  if(imp.includes('역행')||imp.includes('소화'))return ` <span class="tag" style="background:#3a2c17;color:var(--warn)">⚠️ ${imp}</span>`;
+  if(imp.includes('상승'))return ` <span class="tag" style="background:#173a2c;color:var(--up)">📈 ${imp}</span>`;
+  if(imp.includes('하락'))return ` <span class="tag" style="background:#3a1a1f;color:var(--down)">📉 ${imp}</span>`;
+  return ` <span class="tag">${imp}</span>`;   // 횡보·아직잠잠 = 영향 거의 없음
+}
+const trend=v=>v==null?'—':(v>=0?'+':'')+(+v).toFixed(1)+'%';
 async function loadIssues(){
   const d=await j('/api/issues'); if(!d){$('is-st').textContent='실패';return;}
   $('is-st').textContent=d.length+'건';
@@ -187,10 +195,10 @@ async function loadIssues(){
     const items=byDate[dt].slice().sort((a,b)=>Math.abs(b.score||0)-Math.abs(a.score||0));
     const pos=items.filter(x=>x.polarity==='긍정').length, neg=items.filter(x=>x.polarity==='부정').length;
     return `<div class="grp"><span>${dt}</span><span class="mut" style="font-weight:400;font-size:11px">${items.length}종 · <span class="up">🟢${pos}</span> <span class="down">🔴${neg}</span></span></div>`
-      +items.map(x=>{const c=cls(x.score);
-        return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${x.symbol}</span>${nm(x.symbol)} ${polTag(x.polarity)}<span class="mut" style="font-size:10.5px">${esc(x.session||'')}</span></div>
+      +items.map(x=>{
+        return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${x.symbol}</span>${nm(x.symbol)} ${polTag(x.polarity)}${impTag(x.impact)}<span class="mut" style="font-size:10.5px">${esc(x.session||'')}</span></div>
           ${x.summary?`<div class="row-s" style="white-space:normal;line-height:1.45">${esc(x.summary.slice(0,150))}</div>`:''}</div>
-          <div class="row-r"><div class="v num ${c}">${(x.score>=0?'+':'')+(+x.score).toFixed(2)}</div><div class="v2 mut">${x.sources}건</div></div></div>`;}).join('');
+          <div class="row-r"><div class="v num ${cls(x.ret_5d)}">${trend(x.ret_5d)}</div><div class="v2 mut">1주추세 · 감성 ${(x.score>=0?'+':'')+(+x.score).toFixed(2)}</div></div></div>`;}).join('');
   }).join('');
 }
 async function load(){

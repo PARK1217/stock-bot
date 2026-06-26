@@ -97,6 +97,10 @@ class NewsIssue(Base):
     confidence: Mapped[float] = mapped_column(Float, default=0)
     summary: Mapped[str] = mapped_column(String(600), default="")
     sources: Mapped[int] = mapped_column(Integer, default=0)
+    # 이슈 대비 실제 주가 반응 — 배치 시점 단기 수익률 + 반영여부 판정
+    ret_1d: Mapped[float | None] = mapped_column(Float, nullable=True)   # 1거래일 %
+    ret_5d: Mapped[float | None] = mapped_column(Float, nullable=True)   # 5거래일(≈1주) %
+    impact: Mapped[str] = mapped_column(String(16), default="")          # 반영/역행/소화/횡보 등
 
 
 class Prediction(Base):

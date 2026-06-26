@@ -35,6 +35,19 @@ def polarity(score: float) -> str:
     return "중립"
 
 
+def issue_impact(pol: str, ret_5d: float | None) -> str:
+    """이슈 극성 vs 최근 1주 주가반응 → '실제 영향' 한눈 판정. 단일 출처.
+    반영=영향 있음(방향 일치), 역행/소화=다르게 움직임, 횡보/잠잠=영향 거의 없음."""
+    if ret_5d is None:
+        return ""
+    up, down = ret_5d >= 1.0, ret_5d <= -1.0       # ±1% 미만은 횡보로 간주
+    if pol == "긍정":
+        return "반영(상승중)" if up else "역행(하락중)" if down else "아직잠잠"
+    if pol == "부정":
+        return "반영(하락중)" if down else "소화(상승중)" if up else "아직잠잠"
+    return "상승추세" if up else "하락추세" if down else "횡보"
+
+
 @dataclass
 class NewsItem:
     headline: str
