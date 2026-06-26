@@ -183,17 +183,17 @@ def run_paper(dry: bool = False) -> dict:
             if dry:
                 executed.append(f"[DRY] {mk} {side.value} {sym} {qty}")
                 continue
+            ref = next((t["price"] for t in targets if t["symbol"] == sym),
+                       p.current_price if p else 0)              # 기준가(거래대금 근사)
             if mk == "KR":
                 res = kis.place_order(sym, side, qty)            # 국내 시장가
             else:
-                base = next((t["price"] for t in targets if t["symbol"] == sym),
-                            p.current_price if p else 0)
-                lim = base * (1.01 if side == Side.BUY else 0.99)  # 마켓터블 지정가
+                lim = ref * (1.01 if side == Side.BUY else 0.99)  # 마켓터블 지정가
                 res = kis.place_overseas_order(sym, side, qty, lim)
             time.sleep(0.4)
             executed.append(f"{'✅' if res.ok else '❌'} {mk} {side.value} {sym} {qty}: {res.message}")
             session.add(OrderLog(broker=f"kis-paper-{mk.lower()}", mode="paper",
-                                 symbol=sym, side=side.value, qty=qty, ok=res.ok,
+                                 symbol=sym, side=side.value, qty=qty, ok=res.ok, price=ref,
                                  order_id=res.order_id, message=(res.message or "")[:250]))
         if not dry:
             session.add(PaperSnapshot(cash=kbal.cash, total_eval=total_krw,

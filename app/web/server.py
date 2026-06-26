@@ -364,37 +364,54 @@ def screen_backtest():
 
 @app.get("/api/paper/trades")
 def paper_trades(page: int = 0, size: int = 8):
-    """모의 거래내역 — KIS 실제 체결원장(ccnl) 기반. 매수·매도 전부(자동+수동). 페이징."""
+    """모의 거래내역 — US=KIS 체결원장(ccnl), KR=OrderLog(모의 국내 체결조회 미지원).
+    매수·매도 통합, 시각순 페이징."""
     page = max(0, page); size = min(max(size, 1), 50)
     if (c := _cache_get(f"web:ptr:{page}:{size}")):
         return c
     fx = 1540.0
-    ledger = []
+    rows = []                                            # (정렬키 dt, item)
+    turnover = 0.0
     try:
         from bot.brokers.kis import KISBroker
         from bot.brokers.toss import TossBroker
         fx = TossBroker().usdkrw() or 1540.0
-        ledger = KISBroker(paper=True).overseas_orders(
-            (datetime.now() - timedelta(days=10)).strftime("%Y%m%d"),
-            datetime.now().strftime("%Y%m%d"))
+        for r in KISBroker(paper=True).overseas_orders(            # US (ccnl)
+                (datetime.now() - timedelta(days=10)).strftime("%Y%m%d"),
+                datetime.now().strftime("%Y%m%d")):
+            ccld, ordq = r["ccld_qty"], r["ord_qty"]
+            amt = round(r["amt"] * fx) if ccld > 0 else None
+            turnover += (r["amt"] or 0) * fx
+            rows.append((r["dt"], {
+                "ts": _fmt_dt(r["dt"]), "symbol": r["symbol"], "side": r["side"],
+                "qty": ordq, "filled": ccld, "market": "US",
+                "status": ("체결" if ccld >= ordq > 0 else "부분체결" if ccld > 0 else "미체결"),
+                "fill_price": round(r["price"], 2) if ccld > 0 else None, "amount_krw": amt}))
     except Exception:  # noqa: BLE001
         pass
-    ledger.sort(key=lambda r: r["dt"], reverse=True)        # 최신순
-    items = []
-    for r in ledger:
-        ccld, ordq = r["ccld_qty"], r["ord_qty"]
-        items.append({
-            "ts": _fmt_dt(r["dt"]), "symbol": r["symbol"], "side": r["side"],
-            "qty": ordq, "filled": ccld, "market": "US",
-            "status": ("체결" if ccld >= ordq > 0 else
-                       "부분체결" if ccld > 0 else "미체결"),
-            "fill_price": round(r["price"], 2) if ccld > 0 else None,
-            "amount_krw": round(r["amt"] * fx) if ccld > 0 else None})
+    try:                                                          # KR (OrderLog)
+        with SessionLocal() as s:
+            kr = (s.query(OrderLog)
+                  .filter(OrderLog.mode == "paper", OrderLog.ok.is_(True),
+                          OrderLog.broker.notlike("%us%"))
+                  .order_by(OrderLog.id.desc()).limit(300).all())
+            for t in kr:
+                dt = (t.ts + timedelta(hours=9)).strftime("%Y%m%d%H%M%S")  # UTC→KST
+                amt = round((t.price or 0) * t.qty) if t.price else None
+                if amt:
+                    turnover += amt
+                rows.append((dt, {
+                    "ts": _fmt_dt(dt), "symbol": t.symbol, "side": t.side,
+                    "qty": t.qty, "filled": t.qty, "market": "KR", "status": "체결",
+                    "fill_price": (t.price or None), "amount_krw": amt}))
+    except Exception:  # noqa: BLE001
+        pass
+    rows.sort(key=lambda x: x[0], reverse=True)          # 최신순
+    items = [it for _, it in rows]
     total = len(items)
-    turnover = round(sum((r["amt"] or 0) for r in ledger) * fx)  # 매수+매도 체결 ₩
     out = {"items": items[page * size:(page + 1) * size], "page": page, "size": size,
            "total": total, "pages": (total + size - 1) // size if total else 0,
-           "turnover_krw": turnover}
+           "turnover_krw": round(turnover)}
     _cache_set(f"web:ptr:{page}:{size}", out, 20)
     return out
 
