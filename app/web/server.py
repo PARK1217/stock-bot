@@ -823,6 +823,11 @@ def chat(body: dict):
         "5) [완전 주린이용] 한 번에 핵심 2~3개만(쏟아내지 말 것). 따뜻하고 격려하는 말투로. "
         "답변 맨 끝에 반드시 '👉 쉽게 말하면: …' 한 줄 요약을 붙인다. 한국어 불릿.\n\n"
         f"[현재 데이터]\n{ctx}\n\n[대화]{convo}\n사용자: {msg}\n분석봇:")
+    who_acct = "spouse" if body.get("who") == "spouse" else "me"
+    # 동일 질문(+계좌+대화맥락)이면 LLM 재호출 없이 이전 답변 반환(토큰 절약). 시세변동 고려 30분.
+    ckey = "chat:ans:" + hashlib.sha256(f"{who_acct}|{msg}|{convo}".encode()).hexdigest()[:32]
+    if (cached := _r.get(ckey)):
+        return {"reply": cached.decode(), "cached": True}
     reply = None
     try:
         from bot import chateval
@@ -830,15 +835,16 @@ def chat(body: dict):
         from bot import names as N
         res = chateval.llm_call(prompt, max_tokens=900)
         reply = res.get("text")
-        who_acct = "spouse" if body.get("who") == "spouse" else "me"
         sys_prompt = prompt.split("\n\n[현재 데이터]\n")[0]   # 지침부 = 시스템 프롬프트(실제 데이터 마커로 분리)
         known = list(set(DEFAULT_WATCHLIST + KR_WATCHLIST + SINGLE_US + SINGLE_KR)
                      | set(N.all_learned().keys()))
         chateval.log_chat(msg, sys_prompt, ctx, reply, res.get("usage"), res.get("model"),
                           res.get("provider"), who_acct, known)
+        if reply:
+            _r.set(ckey, reply, ex=1800)            # 30분 캐시
     except Exception as e:  # noqa: BLE001
         log.warning("chat 실패: %s", e)
-    return {"reply": reply or "분석에 실패했어요. 잠시 후 다시 시도해 주세요."}
+    return {"reply": reply or "분석에 실패했어요. 잠시 후 다시 시도해 주세요.", "cached": False}
 
 
 @app.get("/api/chateval")
