@@ -308,19 +308,21 @@ def quotes(symbols: str = Query(default=""), who: str = Query(default="me")):
 
 # ---------------- 스크리너 (캐시 1h) ----------------
 @app.get("/api/screen")
-def screen(refresh: bool = False, market: str = "us"):
+def screen(refresh: bool = False, market: str = "us", kind: str = "etf"):
     market = "kr" if market.lower() == "kr" else "us"
-    key = f"web:screen:{market}"
+    kind = "single" if kind.lower() == "single" else "etf"   # etf(기본) / single(개별주)
+    key = f"web:screen:{market}:{kind}"
     if not refresh and (c := _cache_get(key)):
         return c
-    from bot.screener import screen as run_screen, DEFAULT_WATCHLIST, KR_WATCHLIST
+    from bot.screener import (screen as run_screen, DEFAULT_WATCHLIST,
+                              KR_WATCHLIST, SINGLE_US, SINGLE_KR)
     if market == "kr":
         from bot.brokers.kis import KISBroker
         b = KISBroker(account=("63776023", "01"), paper=False)   # KR 시세용
-        wl = KR_WATCHLIST
+        wl = SINGLE_KR if kind == "single" else KR_WATCHLIST
     else:
         b = get_broker()
-        wl = DEFAULT_WATCHLIST
+        wl = SINGLE_US if kind == "single" else DEFAULT_WATCHLIST
     candles = {}
     for s in wl:
         try:
