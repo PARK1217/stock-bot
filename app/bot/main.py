@@ -181,30 +181,53 @@ def cmd_screen() -> None:
         notify(msg)
 
 
-def cmd_news_warm() -> None:
-    """뉴스 이슈 요약 미리 캐싱(대시보드 /api/news 키)."""
+def cmd_news_warm(session: str = "") -> None:
+    """뉴스 감성 이슈 정기 배치(장중 KR3·US3/일). 종목별 점수·극성·요약을
+    ① news_issue DB 적재(날짜별 히스토리) ② 대시보드 캐시(web:news) 동시 갱신.
+    session 미지정 시 현재 시각(KST)으로 자동 라벨."""
     import json
     import redis
+    from datetime import datetime
     from bot import news
-    from bot.screener import DEFAULT_WATCHLIST
+    from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST
+    from bot.storage.models import NewsIssue
     r = redis.from_url(settings.redis_url)
+    now = datetime.now()                       # 컨테이너 TZ=Asia/Seoul
+    if not session:
+        h = now.hour
+        session = ("KR-오전" if 8 <= h < 11 else "KR-점심" if 11 <= h < 14 else
+                   "KR-오후" if 14 <= h < 18 else "US-초반" if (h >= 22 or h < 1) else
+                   "US-중반" if 1 <= h < 3 else "US-후반")
+    day = now.strftime("%Y-%m-%d")
+    # 유니버스: US 실보유 + US 워치 + KR 워치
+    us = []
     try:
-        syms = [p.symbol for p in get_broker().get_balance().positions][:8]
+        us = [p.symbol for p in get_broker().get_balance().positions]
     except Exception:  # noqa: BLE001
-        syms = []
-    syms += DEFAULT_WATCHLIST[:6]
+        pass
+    us = list(dict.fromkeys(us + DEFAULT_WATCHLIST))
+    universe = [(s, "US") for s in us] + [(s, "KR") for s in KR_WATCHLIST]
     n = 0
-    for s in dict.fromkeys(syms):
-        try:
-            ns = news.get_sentiment(s, "US")
-            r.set(f"web:news:{s}", json.dumps(
-                {"symbol": s, "score": round(ns.score, 2),
-                 "summary": ns.summary, "sources": ns.sources}, ensure_ascii=False),
-                ex=5 * 3600)
-            n += 1
-        except Exception:  # noqa: BLE001
-            pass
-    log.info("뉴스 요약 캐싱 %d종", n)
+    with SessionLocal() as sess:
+        for sym, mkt in universe:
+            try:
+                ns = news.get_sentiment(sym, mkt)
+                pol = news.polarity(ns.score)
+                r.set(f"web:news:{sym}", json.dumps(
+                    {"symbol": sym, "score": round(ns.score, 2), "polarity": pol,
+                     "summary": ns.summary, "sources": ns.sources}, ensure_ascii=False),
+                    ex=5 * 3600)
+                if ns.sources > 0:             # 기사 있는 것만 히스토리 적재
+                    sess.add(NewsIssue(
+                        date=day, session=session, symbol=sym, market=mkt,
+                        score=round(ns.score, 3), polarity=pol,
+                        confidence=round(ns.confidence, 3),
+                        summary=(ns.summary or "")[:580], sources=ns.sources))
+                    n += 1
+            except Exception:  # noqa: BLE001
+                pass
+        sess.commit()
+    log.info("뉴스 이슈 배치(%s) %d종 적재", session, n)
 
 
 def _technical_tilt(closes: list[float]) -> float:
@@ -545,7 +568,10 @@ _DOW = {"mon-fri": {0, 1, 2, 3, 4}, "tue-sat": {1, 2, 3, 4, 5}, "mon": {0}}
 _SCHEDULE = [
     ("screen", lambda: cmd_screen(), "mon-fri", [(9, 10)]),
     ("propose", lambda: cmd_propose(), "mon-fri", [(10, 0)]),
-    ("news_warm", lambda: cmd_news_warm(), "mon-fri", [(9, 20), (23, 45)]),
+    # 뉴스 감성 이슈 — 정규장 중 각 3회(KR/US). DB 적재 + 대시보드 캐시 갱신.
+    ("news_kr", lambda: cmd_news_warm(), "mon-fri", [(9, 15), (12, 0), (15, 0)]),
+    ("news_us_eve", lambda: cmd_news_warm(), "mon-fri", [(23, 0)]),          # US 개장(저녁)
+    ("news_us_dawn", lambda: cmd_news_warm(), "tue-sat", [(1, 30), (4, 30)]),  # US 중·종반(새벽)
     ("snapshot_kr", lambda: cmd_snapshot(), "mon-fri", [(15, 40)]),   # KR 마감
     ("snapshot_us", lambda: cmd_snapshot(), "tue-sat", [(6, 10)]),    # US 마감(익일 새벽)
     ("forecast_all", lambda: cmd_forecast_all(), "mon-fri", [(9, 30)]),

@@ -141,19 +141,51 @@ def portfolio(broker: str = Query(default=""), who: str = Query(default="me")):
 def news_summaries(symbols: str = Query(default=""), limit: int = 12):
     """종목별 뉴스 이슈 요약(Groq). 종목당 4시간 캐시."""
     syms = [s.strip().upper() for s in symbols.split(",") if s.strip()][:limit]
+    if not syms:
+        return []
     from bot import news
-    out = []
-    for s in syms:
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(s):
         c = _cache_get(f"web:news:{s}")
         if c is None:
             try:
                 ns = news.get_sentiment(s, "US")
                 c = {"symbol": s, "score": round(ns.score, 2),
+                     "polarity": news.polarity(ns.score),
                      "summary": ns.summary, "sources": ns.sources}
             except Exception:  # noqa: BLE001
-                c = {"symbol": s, "score": 0, "summary": "(조회 오류)", "sources": 0}
+                c = {"symbol": s, "score": 0, "polarity": "중립",
+                     "summary": "(조회 오류)", "sources": 0}
             _cache_set(f"web:news:{s}", c, 4 * 3600)
-        out.append(c)
+        return c
+
+    # 종목별 요약은 서로 독립 → 병렬(순차 10종목 = 수분 지연 방지). map은 입력순서 보존.
+    with ThreadPoolExecutor(max_workers=min(3, len(syms))) as ex:
+        return list(ex.map(one, syms))
+
+
+@app.get("/api/issues")
+def issues(days: int = 14):
+    """뉴스 감성 이슈 히스토리 — 장중 배치 적재분. 날짜·종목별 최신 1건(극성 포함).
+    RAG 평가 '이슈 히스토리'에서 날짜별로 정리해 표시."""
+    from datetime import date as _date, timedelta
+    from bot.storage.models import NewsIssue
+    cutoff = (_date.today() - timedelta(days=max(1, days))).isoformat()
+    with SessionLocal() as s:
+        rows = (s.query(NewsIssue)
+                .filter(NewsIssue.date >= cutoff)
+                .order_by(NewsIssue.ts.desc()).limit(3000).all())
+    seen, out = set(), []                       # (날짜,종목) 최신 1건만
+    for r in rows:
+        k = (r.date, r.symbol)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append({"date": r.date, "session": r.session, "symbol": r.symbol,
+                    "market": r.market, "score": r.score, "polarity": r.polarity,
+                    "summary": r.summary, "sources": r.sources,
+                    "ts": r.ts.isoformat() if r.ts else ""})
     return out
 
 

@@ -58,6 +58,7 @@
   <button class="tab" data-t="done" onclick="showTab('done')">✅ 검증 완료</button>
   <button class="tab" data-t="open" onclick="showTab('open')">⏳ 진행 중</button>
   <button class="tab" data-t="chat" onclick="showTab('chat')">💬 챗봇 정확도</button>
+  <button class="tab" data-t="issues" onclick="showTab('issues')">📰 이슈 히스토리</button>
 </div>
 <div class="wrap">
   <div class="card" data-tab="verify">
@@ -86,6 +87,13 @@
     <div id="ce-calls"></div>
     <div class="grp">🗒️ 최근 대화 기록</div>
     <div id="ce-log"><div class="empty">로딩…</div></div>
+  </div>
+
+  <div class="card" data-tab="issues" style="display:none">
+    <h2>📰 이슈 히스토리 <span class="sub" id="is-st">로딩…</span></h2>
+    <div class="help-box">정규장 중 하루 6회(🇰🇷 3 · 🇺🇸 3) 종목별 뉴스 감성을 기록합니다.
+      <b class="up">🟢 긍정</b> · <b class="down">🔴 부정</b> · ⚪ 중립 — 점수는 −1(부정)~+1(긍정).</div>
+    <div id="is-list"><div class="empty">로딩…</div></div>
   </div>
 </div>
 <script>
@@ -163,9 +171,31 @@ async function loadChat(){
     </div>`;}).join('')
     :'<div class="empty">대화 기록 없음 — 챗봇에 질문하면 여기 전부 기록됩니다</div>';
 }
+function polTag(p){
+  if(p==='긍정')return '<span class="tag up">🟢 긍정</span>';
+  if(p==='부정')return '<span class="tag down">🔴 부정</span>';
+  return '<span class="tag">⚪ 중립</span>';
+}
+async function loadIssues(){
+  const d=await j('/api/issues'); if(!d){$('is-st').textContent='실패';return;}
+  $('is-st').textContent=d.length+'건';
+  if(!d.length){$('is-list').innerHTML='<div class="empty">아직 이슈 기록이 없어요 — 장중 배치(KR/US 각 3회)가 돌면 날짜별로 쌓입니다</div>';return;}
+  const byDate={};
+  d.forEach(x=>{(byDate[x.date]||(byDate[x.date]=[])).push(x);});
+  const dates=Object.keys(byDate).sort().reverse();
+  $('is-list').innerHTML=dates.map(dt=>{
+    const items=byDate[dt].slice().sort((a,b)=>Math.abs(b.score||0)-Math.abs(a.score||0));
+    const pos=items.filter(x=>x.polarity==='긍정').length, neg=items.filter(x=>x.polarity==='부정').length;
+    return `<div class="grp"><span>${dt}</span><span class="mut" style="font-weight:400;font-size:11px">${items.length}종 · <span class="up">🟢${pos}</span> <span class="down">🔴${neg}</span></span></div>`
+      +items.map(x=>{const c=cls(x.score);
+        return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${x.symbol}</span>${nm(x.symbol)} ${polTag(x.polarity)}<span class="mut" style="font-size:10.5px">${esc(x.session||'')}</span></div>
+          ${x.summary?`<div class="row-s" style="white-space:normal;line-height:1.45">${esc(x.summary.slice(0,150))}</div>`:''}</div>
+          <div class="row-r"><div class="v num ${c}">${(x.score>=0?'+':'')+(+x.score).toFixed(2)}</div><div class="v2 mut">${x.sources}건</div></div></div>`;}).join('');
+  }).join('');
+}
 async function load(){
   const nd=await j('/api/names'); if(nd&&nd.names)NAMES=nd.names;
-  loadVerify(); loadChat();
+  loadVerify(); loadChat(); loadIssues();
 }
 load();
 setInterval(load,60000);

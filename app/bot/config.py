@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     hf_finbert_model: str = "ProsusAI/finbert"
     groq_api_key: str = ""                # Groq 무료 API (관련성 필터·요약)
     groq_model: str = "llama-3.3-70b-versatile"
+    # 뉴스 요약·관련성은 가벼운 작업 → 8b(일일한도 5배·별도 풀)로 70b 한도 절약·지연 방지
+    groq_news_model: str = "llama-3.1-8b-instant"
     groq_base_url: str = "https://api.groq.com/openai/v1"
     mistral_api_key: str = ""             # 폴백 LLM(Groq 장애 대비)
     mistral_model: str = "mistral-small-latest"

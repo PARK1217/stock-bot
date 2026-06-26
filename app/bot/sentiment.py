@@ -72,11 +72,37 @@ def _finbert_hf_one(text: str) -> list[dict] | None:
 
 
 def _finbert_hf(texts: list[str]) -> list[tuple[str, float]] | None:
+    """HF Inference API FinBERT — inputs에 리스트를 한 번에(배치). 50건도 ~0.8초로,
+    텍스트당 1콜(과거 ~13초) 대비 약 17배. 배치 형식이 깨지면 순차 폴백."""
+    url = f"https://router.huggingface.co/hf-inference/models/{settings.hf_finbert_model}"
+    headers = {"Authorization": f"Bearer {settings.huggingface_api_key}"}
+    for attempt in range(4):
+        try:
+            r = httpx.post(url, headers=headers,
+                           json={"inputs": texts, "options": {"wait_for_model": True}},
+                           timeout=60)
+            if r.status_code == 503:                      # 모델 콜드로딩
+                time.sleep(2 * (attempt + 1))
+                continue
+            r.raise_for_status()
+            data = r.json()
+            break
+        except (httpx.HTTPError, ValueError) as e:
+            log.warning("HF FinBERT 배치 실패: %s", e)
+            data = None
+            break
+    else:
+        data = None
+    # 배치 정상: [[{label,score}x3], ...] (텍스트당 라벨 리스트)
+    if (isinstance(data, list) and len(data) == len(texts)
+            and data and isinstance(data[0], list)):
+        return [_parse_finbert(d) for d in data]
+    # 배치 형식 예상밖/실패 → 한 건씩 순차(기존 방식) 폴백
     results = []
     for t in texts:
         scores = _finbert_hf_one(t)
         if scores is None:
-            return None  # 한 건이라도 실패하면 로컬 폴백
+            return None
         results.append(_parse_finbert(scores))
     return results
 
@@ -101,8 +127,10 @@ def finbert_scores(texts: list[str]) -> list[tuple[str, float]] | None:
 
 # ---------------- Groq (관련성·요약) ----------------
 def _openai_chat(base_url: str, key: str, model: str,
-                 prompt: str, max_tokens: int) -> str | None:
-    """OpenAI 호환 chat completions(그록·미스트랄 공용). 429/5xx 백오프."""
+                 prompt: str, max_tokens: int, *, retry_rl: bool = True) -> str | None:
+    """OpenAI 호환 chat completions(그록·미스트랄 공용). 429/5xx 백오프.
+    retry_rl=False면 429(레이트리밋)는 재시도 없이 즉시 None — 폴백이 있는 1차 LLM용
+    (특히 Groq 일일 토큰한도(TPD)는 수초 재시도로 안 풀려 지연만 키움)."""
     for attempt in range(3):
         try:
             r = httpx.post(
@@ -111,6 +139,8 @@ def _openai_chat(base_url: str, key: str, model: str,
                 json={"model": model, "max_tokens": max_tokens, "temperature": 0,
                       "messages": [{"role": "user", "content": prompt}]},
                 timeout=30)
+            if r.status_code == 429 and not retry_rl:
+                return None                                # 폴백으로 바로 넘김
             if r.status_code in (429, 500, 502, 503, 504):
                 time.sleep(0.6 * (attempt + 1))
                 continue
@@ -128,7 +158,7 @@ def _llm_chat(prompt: str, max_tokens: int = 300) -> str | None:
     """관련성·요약용 LLM. Groq 우선 → 실패 시 Mistral 폴백."""
     if settings.groq_api_key:
         out = _openai_chat(settings.groq_base_url, settings.groq_api_key,
-                           settings.groq_model, prompt, max_tokens)
+                           settings.groq_news_model, prompt, max_tokens, retry_rl=False)
         if out is not None:
             return out
         log.warning("Groq 실패 → Mistral 폴백")

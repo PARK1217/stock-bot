@@ -81,6 +81,24 @@ class AssetSnapshot(Base):
     pension_krw: Mapped[float] = mapped_column(Float, default=0)
 
 
+class NewsIssue(Base):
+    """뉴스 감성 이슈 — 장중 정기 배치(KR3·US3/일)로 종목별 점수·극성·요약을 적재.
+    날짜별 히스토리(RAG 평가 '이슈 히스토리')·대시보드 이슈요약의 단일 출처."""
+    __tablename__ = "news_issue"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    date: Mapped[str] = mapped_column(String(10), index=True)   # YYYY-MM-DD (KST)
+    session: Mapped[str] = mapped_column(String(16), default="")  # KR-오전 / US-후반 등
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
+    market: Mapped[str] = mapped_column(String(4), default="US")
+    score: Mapped[float] = mapped_column(Float, default=0)        # [-1,1] 부정~긍정
+    polarity: Mapped[str] = mapped_column(String(8), default="중립")  # 긍정 | 부정 | 중립
+    confidence: Mapped[float] = mapped_column(Float, default=0)
+    summary: Mapped[str] = mapped_column(String(600), default="")
+    sources: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class Prediction(Base):
     """자기예측추적 — 예측을 기록하고 만기 후 실제와 대조해 '실측 정확도'를 산출."""
     __tablename__ = "prediction"

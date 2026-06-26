@@ -16,10 +16,23 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import httpx
+import redis
 
 from bot.config import settings
 
 log = logging.getLogger(__name__)
+_redis = redis.from_url(settings.redis_url)
+
+
+def polarity(score: float) -> str:
+    """감성점수[-1,1] → 한눈 극성. 화면(대시보드·RAG 히스토리) 공통 표기 단일 출처."""
+    if score is None:
+        return "중립"
+    if score >= 0.15:
+        return "긍정"
+    if score <= -0.15:
+        return "부정"
+    return "중립"
 
 
 @dataclass
@@ -129,7 +142,34 @@ def _llm_score(symbol: str, items: list[NewsItem]) -> tuple[float, float, str] |
         return None
 
 
-def get_sentiment(symbol: str, market: str = "US") -> NewsSentiment:
+def get_sentiment(symbol: str, market: str = "US",
+                  need_summary: bool = True) -> NewsSentiment:
+    """종목 뉴스 감성 — 2h redis 캐시. need_summary=False면 한국어 요약 생성 생략
+    (ETF 룩스루 구성종목은 점수만 쓰므로 요약 LLM 호출이 순수 낭비 → 끈다). 구성종목이 ETF끼리 많이 겹쳐(NVDA·AAPL 등)
+    캐시 한 번이면 다른 ETF 룩스루에서 즉시 재사용 → 수분 지연 방지."""
+    ck = f"news:sent:{market}:{symbol.upper()}"
+    try:
+        c = _redis.get(ck)
+        if c:
+            d = json.loads(c)
+            # 요약이 필요한데 캐시엔 비어있고(=구성종목으로 먼저 계산됨) 기사가 있으면 → 재계산해 요약 채움
+            if not (need_summary and not d.get("summary") and d.get("sources", 0) > 0):
+                return NewsSentiment(d["score"], d["confidence"], d.get("summary", ""),
+                                     d["sources"], [])
+    except Exception:  # noqa: BLE001
+        pass
+    ns = _compute_sentiment(symbol, market, need_summary=need_summary)
+    try:
+        _redis.setex(ck, 2 * 3600, json.dumps(
+            {"score": ns.score, "confidence": ns.confidence,
+             "summary": ns.summary, "sources": ns.sources}))
+    except Exception:  # noqa: BLE001
+        pass
+    return ns
+
+
+def _compute_sentiment(symbol: str, market: str = "US",
+                       need_summary: bool = True) -> NewsSentiment:
     """하이브리드: Groq 관련성 필터 → FinBERT 감성 → 집계. 폴백: 키워드.
     ETF(지수추종 등)는 자동으로 구성종목 룩스루로 감성 산출."""
     from bot.sentiment import finbert_scores, groq_relevant_indices, groq_summary
@@ -154,10 +194,12 @@ def get_sentiment(symbol: str, market: str = "US") -> NewsSentiment:
     items = _provider(market).fetch(symbol, settings.news_lookback_days)
     if not items:
         return NewsSentiment(0.0, 0.0, "뉴스 미수집(키 없음/없음)", 0, [])
+    items = items[:20]   # LLM 토큰·지연 억제: 최근 20건이면 감성·요약에 충분(헤드라인 50개 통째 투입 방지)
 
     headlines = [i.headline for i in items]
-    # 1) 관련성 필터(Groq) — 키 없으면 전체 사용
-    idx = groq_relevant_indices(symbol, headlines)
+    # 1) 관련성 필터(Groq) — 키 없으면 전체 사용. 구성종목(need_summary=False)은 점수만 쓰니
+    #    관련성 LLM도 생략(전체 헤드라인을 FinBERT로 채점) → ETF 룩스루에서 Groq 호출 0.
+    idx = groq_relevant_indices(symbol, headlines) if need_summary else None
     # idx=[] (Groq가 '전부 무관' 판정) ≠ None(키없음/실패). []면 관련뉴스 0=중립, None이면 전체 사용
     relevant = ([items[i] for i in idx if 0 <= i < len(items)]
                 if idx is not None else items)
@@ -176,7 +218,8 @@ def get_sentiment(symbol: str, market: str = "US") -> NewsSentiment:
         engine = "키워드(폴백)"
 
     # 주목할 이슈 있을 때만 요약(없으면 빈값→화면서 숨김). 밋밋한 메타 폴백 제거.
-    summary = groq_summary(symbol, [i.headline for i in relevant])
+    # ETF 구성종목(need_summary=False)은 점수만 쓰므로 요약 LLM 생략 → ETF 룩스루 대폭 단축.
+    summary = groq_summary(symbol, [i.headline for i in relevant]) if need_summary else ""
     return NewsSentiment(score, conf, summary, len(relevant), relevant)
 
 
