@@ -551,6 +551,19 @@ def names_view():
     return out
 
 
+@app.get("/api/realized")
+def realized_view():
+    """실현손익(매도 기준) 계좌별+전체 일별·월별. 평단가 이동평균 계산. 300초 캐시."""
+    if (c := _cache_get("web:realized")):
+        return c
+    from bot import realized
+    from bot.brokers.toss import TossBroker
+    fx = TossBroker().usdkrw() or 1540.0
+    out = realized.report(fx, datetime.now())
+    _cache_set("web:realized", out, 300)
+    return out
+
+
 @app.get("/api/kis/orders")
 def kis_orders(limit: int = 40):
     """한투 국내(ISA·연금) 주문·거래 내역. 최근 40일, 대기(미체결) 먼저. 180초 캐시."""
