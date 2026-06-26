@@ -52,6 +52,28 @@ LOOKTHROUGH: dict[str, dict] = {
 }
 
 
+# 구성종목 한글 회사명 — 룩스루 노출 화면 표시용(주린이가 코드만 보면 모름).
+STOCK_NAMES: dict[str, str] = {
+    "NVDA": "엔비디아", "AAPL": "애플", "MSFT": "마이크로소프트", "AMZN": "아마존",
+    "AVGO": "브로드컴", "META": "메타(페이스북)", "GOOGL": "알파벳(구글)",
+    "TSLA": "테슬라", "COST": "코스트코", "NFLX": "넷플릭스", "KO": "코카콜라",
+    "VZ": "버라이즌", "AMGN": "암젠", "ABBV": "애브비", "CVX": "셰브론",
+    "MRK": "머크", "PEP": "펩시코", "HD": "홈디포", "PFE": "화이자",
+    "BRK.B": "버크셔해서웨이", "JPM": "JP모건", "AMD": "AMD", "TSM": "TSMC",
+    "QCOM": "퀄컴", "TXN": "텍사스인스트루먼트", "MU": "마이크론", "INTC": "인텔",
+    "BOXX": "박스스프레드(현금성)", "SGOV": "초단기 국채(현금성)", "GLDM": "금",
+}
+
+
+def stock_name(symbol: str) -> str:
+    """구성종목/ETF 한글명(없으면 빈 문자열). 룩스루 노출 표시용."""
+    s = (symbol or "").upper()
+    if s in STOCK_NAMES:
+        return STOCK_NAMES[s]
+    lt = LOOKTHROUGH.get(s)
+    return lt.get("underlying", "") if lt else ""
+
+
 def lookthrough(symbol: str) -> dict | None:
     return LOOKTHROUGH.get(symbol.upper())
 

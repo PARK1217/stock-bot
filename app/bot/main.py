@@ -255,37 +255,42 @@ def cmd_forecast(symbol: str = "") -> None:
 
 
 def cmd_forecast_all() -> None:
-    """워치리스트 전체 예측 생성·DB기록 (스케줄용). cmd_forecast의 일괄판."""
+    """워치리스트(US+KR) 전체 예측 생성·DB기록 (스케줄용)."""
     from bot import news
     from bot.forecast import forecast_symbol
-    from bot.screener import DEFAULT_WATCHLIST
+    from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST
     from bot.storage.models import Prediction
-    broker, _, _ = _build()
-    if not hasattr(broker, "get_candles"):
-        log.warning("%s 어댑터 캔들 미지원 → 예측 생략", broker.name)
-        return
-    made = 0
+    from bot.brokers.kis import KISBroker
+    us_broker, _, _ = _build()
+    kis = KISBroker(account=("63776023", "01"), paper=False)   # KR 일봉용(실전 시세)
+    made = [0]
+
     with SessionLocal() as session:
-        for symbol in DEFAULT_WATCHLIST:
-            try:
-                closes = [c["close"] for c in broker.get_candles(symbol, "1d", 200)
-                          if c["close"] > 0]
-                if len(closes) < 30:
-                    continue
-                fc = forecast_symbol(symbol, closes, 21,
-                                     technical_tilt=_technical_tilt(closes),
-                                     news_sentiment=news.tilt(symbol))
-                if fc is None:
-                    continue
-                session.add(Prediction(
-                    symbol=symbol, horizon_days=21, base_price=fc.last,
-                    prob_up=fc.prob_up, exp_return=fc.exp_return,
-                    p50=fc.band["p50"], p10=fc.band["p10"], p90=fc.band["p90"],
-                    backtest_winrate=fc.backtest_winrate))
-                made += 1
-            except Exception as e:  # noqa: BLE001
-                log.warning("%s 예측 실패: %s", symbol, e)
+        def _predict(symbols, getc, market):
+            for symbol in symbols:
+                try:
+                    closes = [c["close"] for c in getc(symbol, "1d", 200) if c["close"] > 0]
+                    if len(closes) < 30:
+                        continue
+                    fc = forecast_symbol(symbol, closes, 21,
+                                         technical_tilt=_technical_tilt(closes),
+                                         news_sentiment=news.tilt(symbol, market))
+                    if fc is None:
+                        continue
+                    session.add(Prediction(
+                        symbol=symbol, horizon_days=21, base_price=fc.last,
+                        prob_up=fc.prob_up, exp_return=fc.exp_return,
+                        p50=fc.band["p50"], p10=fc.band["p10"], p90=fc.band["p90"],
+                        backtest_winrate=fc.backtest_winrate))
+                    made[0] += 1
+                except Exception as e:  # noqa: BLE001
+                    log.warning("%s 예측 실패: %s", symbol, e)
+
+        if hasattr(us_broker, "get_candles"):
+            _predict(DEFAULT_WATCHLIST, us_broker.get_candles, "US")
+        _predict(KR_WATCHLIST, kis.get_candles, "KR")
         session.commit()
+    made = made[0]
     log.info("예측 생성 %d건", made)
     if made:
         notify(f"🔮 오늘의 종목별 전망 {made}개 업데이트했어요 "

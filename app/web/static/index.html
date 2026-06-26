@@ -157,6 +157,7 @@
   <button class="tab on" data-t="real" onclick="showTab('real')">💰 실계좌</button>
   <button class="tab" data-t="paper" data-me="1" onclick="showTab('paper')">🧪 모의투자</button>
   <button class="tab" data-t="watch" onclick="showTab('watch')">📈 감시·분석</button>
+  <button class="tab" data-t="ai" onclick="showTab('ai')">🤖 AI 분석</button>
 </div>
 </div>
 
@@ -182,6 +183,12 @@
     <div id="orders"><div class="empty">불러오는 중…</div></div>
   </div>
 
+  <div class="card span2" data-tab="real">
+    <h2>💰 실계좌 실현손익 <span class="mut" style="font-weight:400;font-size:11.5px">(매도 기준 · 월별 · 클릭 펼침)</span>
+        <span class="sub" id="real-st"></span></h2>
+    <div id="realized"><div class="empty">불러오는 중…</div></div>
+  </div>
+
   <div class="card span2" data-tab="real" data-me="1">
     <h2>🏦 한투 실계좌 <span class="sub" id="kis-st"></span></h2>
     <div id="kis"><div class="empty">불러오는 중…</div></div>
@@ -197,7 +204,7 @@
     <div id="expo"><div class="empty">ETF 속 실제 종목 노출 계산 중…</div></div>
   </div>
 
-  <div class="card span2" data-tab="real">
+  <div class="card span2" data-tab="ai">
     <h2>💬 분석 챗봇 <span class="mut" style="font-weight:400;font-size:11.5px">보유·스크리너 근거 · 참고용</span></h2>
     <div id="chat-msgs" class="chat-msgs"></div>
     <div class="chat-chips" id="chat-chips"></div>
@@ -240,7 +247,7 @@
     <div id="prop"><div class="empty">—</div></div>
   </div>
 
-  <div class="card span2" data-tab="real">
+  <div class="card span2" data-tab="ai">
     <h2>📰 주요 이슈 요약 <span class="mut" style="font-weight:400">(보유+추세상위)</span>
         <span class="sub" id="news-st"></span></h2>
     <div id="news"><div class="empty">불러오는 중… (최초 다소 걸림)</div></div>
@@ -258,6 +265,12 @@
       <span class="pg" id="pg-lbl">1 / 1</span>
       <button id="pg-next" onclick="trPage(1)">다음 ›</button>
     </div>
+  </div>
+
+  <div class="card span2" data-tab="paper" data-me="1">
+    <h2>💰 모의 실현손익 <span class="mut" style="font-weight:400;font-size:11.5px">(매도 기준 · 월별 · 클릭 펼침)</span>
+        <span class="sub" id="realp-st"></span></h2>
+    <div id="realized-paper"><div class="empty">불러오는 중…</div></div>
   </div>
 
   <div class="card span2" data-tab="watch">
@@ -288,10 +301,27 @@ const KNM={'069500':'KODEX 200','133690':'TIGER 미국나스닥100','360750':'TI
   '379800':'KODEX 미국S&P500','458730':'TIGER 미국배당다우존스','161510':'PLUS 고배당주',
   '329200':'TIGER 리츠부동산인프라','273130':'KODEX 종합채권액티브','210780':'TIGER 코스피고배당',
   '122630':'KODEX 레버리지','233740':'KODEX 코스닥150레버리지','0021E0':'ACE TDF2050액티브',
-  '484790':'KODEX 미국30년국채'};
-let NAMES={};
+  '484790':'KODEX 미국30년국채',
+  // US (모의·실계좌 거래 유니버스 — 티커는 .sym로 따로 표시되므로 이름은 한글 설명만)
+  'SCHD':'미국 배당','VIG':'배당성장','DGRO':'배당성장','JEPI':'미국 커버드콜',
+  'JEPQ':'나스닥 커버드콜','SPYI':'S&P 커버드콜','QQQI':'나스닥 커버드콜',
+  'O':'리얼티인컴(리츠)','SOXL':'반도체 3배','TQQQ':'나스닥 3배','NVDA':'엔비디아',
+  'AAPL':'애플','TSLA':'테슬라','SPY':'미국 S&P500','QQQ':'나스닥100','VOO':'미국 S&P500',
+  'BOXX':'초단기 채권','SGOV':'미국 단기국채','GLDM':'금 ETF','APLE':'애플호스피탈리티(리츠)',
+  // 룩스루(실질 노출) 속 개별 기업 — ETF 상위 구성 메가캡
+  'MSFT':'마이크로소프트','AMZN':'아마존','AVGO':'브로드컴','META':'메타(페이스북)',
+  'GOOGL':'알파벳(구글)','GOOG':'알파벳(구글)','BRK-B':'버크셔해서웨이','LLY':'일라이릴리',
+  'JPM':'JP모건','V':'비자','UNH':'유나이티드헬스','XOM':'엑슨모빌','MA':'마스터카드',
+  'AMD':'AMD','NFLX':'넷플릭스','COST':'코스트코','HD':'홈디포','ABBV':'애브비',
+  'KO':'코카콜라','PEP':'펩시코','MRK':'머크','WMT':'월마트','CVX':'셰브론',
+  'BAC':'뱅크오브아메리카','JNJ':'존슨앤드존슨','PG':'P&G','CRM':'세일즈포스','ORCL':'오라클',
+  // 예측 워치리스트 배당·인컴 ETF
+  'DIVO':'배당 인컴','HDV':'고배당','QYLD':'나스닥 커버드콜','SPHD':'고배당 저변동',
+  'VYM':'고배당','SCHY':'미국外 배당','SPYD':'S&P 고배당','NOBL':'배당귀족','DGRW':'배당성장'};
+let NAMES={},LEARNED={};
 function learnNames(arr){(arr||[]).forEach(p=>{if(p&&p.symbol&&p.name)NAMES[p.symbol]=p.name;});}
-function nameOf(s){return NAMES[s]||KNM[s]||'';}
+async function loadNames(){try{const d=await j('/api/names');if(d&&d.names)LEARNED=d.names;}catch(e){}}  // 증권사 학습이름(영구) 로드
+function nameOf(s){return KNM[s]||NAMES[s]||LEARNED[s]||'';}  // 한글(KNM) 우선 → 현재보유 → 학습(영어 폴백)
 function nmTag(s){const n=nameOf(s);return n?` <span class="nm">${esc(n)}</span>`:'';}
 function sparkline(hist){
   const v=hist.map(h=>h.total); if(v.length<2)return '';
@@ -423,14 +453,16 @@ function renderScreenInto(d,elId){
   if(!Array.isArray(d))return; const el=document.getElementById(elId); if(!el)return;
   const mx=Math.max(...d.map(r=>r.score),1), held=heldSyms();
   el.innerHTML=d.map(r=>{
-    const h=held.has(r.symbol);
+    const h=held.has(r.symbol); const f=r.forecast;
+    const fline=f?`<div class="row-s num" style="margin-top:4px;color:#6fb3ff">🔮 앞으로 ${f.horizon||21}일 예상: 기대 <span class="${cls(f.exp_return)}">${pct(f.exp_return)}</span> · 상승확률 ${Math.round(f.prob_up*100)}%</div>`:'';
     return `<div class="row"${h?' style="background:#1c1a14"':''}>
       <div class="row-l"><div class="row-t"><span class="sym">${r.symbol}</span>${nmTag(r.symbol)}
         ${h?'<span class="tag hold">보유</span>':''}${r.trend_aligned?'<span class="tag al">정배열</span>':''}</div>
         <div class="barwrap"><span class="bar"><i style="width:${Math.max(0,r.score/mx*100)}%"></i></span>
-          <span class="mut num" style="font-size:11px">상승세 ${r.score}</span></div></div>
-      <div class="row-r"><div class="v2 ${cls(r.ret_1m)} num">1M ${pct(r.ret_1m)}</div>
-        <div class="v2 ${cls(r.ret_3m)} num">3M ${pct(r.ret_3m)}</div></div></div>`;}).join('');
+          <span class="mut num" style="font-size:11px">상승세 ${r.score}</span></div>${fline}</div>
+      <div class="row-r"><div class="mut" style="font-size:9.5px">과거 수익</div>
+        <div class="v2 ${cls(r.ret_1m)} num">1개월 ${pct(r.ret_1m)}</div>
+        <div class="v2 ${cls(r.ret_3m)} num">3개월 ${pct(r.ret_3m)}</div></div></div>`;}).join('');
 }
 async function loadScreen(){
   const d=await j('/api/screen'); const st=document.getElementById('scn-st');
@@ -493,20 +525,49 @@ async function loadExpo(){
     (warn?' <span class="down" style="font-size:.85em">⚠️분산착시</span>':'');
   const mx=d.top[0]?d.top[0].pct:1;
   e.innerHTML=`<div class="help-box" style="border-bottom:1px solid var(--line)">여러 ETF를 보유해도 <b>속을 뚫어보면(룩스루)</b> 실제로 어떤 기업에 얼마나 노출됐는지 — 진짜 분산 여부 점검.</div>`+
-    d.top.map(t=>`<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${t.symbol}</span>${nmTag(t.symbol)}</div>
+    d.top.map(t=>`<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${t.symbol}</span>${(t.name||nameOf(t.symbol))?` <span class="nm">${esc(t.name||nameOf(t.symbol))}</span>`:''}</div>
       <div class="barwrap"><span class="bar"><i style="width:${Math.max(2,t.pct/mx*100)}%"></i></span></div></div>
      <div class="row-r"><div class="v num">${t.pct}%</div><div class="v2 mut num">${amt(t.krw)}</div></div></div>`).join('');
 }
 async function loadProposals(){
   const d=await j('/api/proposals'); const b=document.getElementById('prop');
   const open=(d||[]).filter(p=>p.status==='pending');
-  b.innerHTML=open.length?open.map(p=>
-    `<div class="row"><div class="row-l"><div class="row-t">
-       <span class="tag ${p.side==='buy'?'buy':'sell'}">${p.side==='buy'?'매수':'매도'}</span>
-       ${mkt(p.currency==='KRW'?'KR':'US')} <span class="sym">${p.symbol}</span>${nmTag(p.symbol)}</div>
-       <div class="row-s">${esc(p.reason||'')}</div></div>
-     <div class="row-r"><div class="v num">${nf(p.qty,4)}</div><div class="v2 mut">수량(주)</div></div></div>`).join('')
-    :'<div class="empty">대기 중 제안 없음</div>';
+  if(!open.length){b.innerHTML='<div class="empty">대기 중 제안 없음 — 지금 비중이 목표 범위 안이에요</div>';return;}
+  b.innerHTML=open.map(propRow).join('');
+  open.forEach(fillForecast);                          // 각 제안에 모델 예측 참고치 주입
+}
+function propReason(p){                                 // 터스한 reason → 쉬운 한글
+  const r=p.reason||'', buy=p.side==='buy';
+  let m=r.match(/rebalance\s+([\d.]+)%->([\d.]+)%/);
+  if(m){const cur=+m[1],tgt=+m[2];
+    return cur<0.05
+      ? `목표 비중은 <b>${tgt}%</b>인데 지금 <b>0%</b>(안 들고 있음) → 새로 채우는 매수`
+      : `목표 비중은 <b>${tgt}%</b>인데 지금 <b>${cur}%</b> → ${buy?'부족분 채우는 매수':'초과분 줄이는 매도'}`;}
+  m=r.match(/stop_loss\s+(-?[\d.]+)/);
+  if(m)return `손절 신호 — 손실 <b>${m[1]}%</b>가 한도를 넘어 매도`;
+  return esc(r);
+}
+function propRow(p){
+  const buy=p.side==='buy', c=p.currency==='USD'?'$':'₩';
+  return `<div class="row"><div class="row-l">
+      <div class="row-t"><span class="tag ${buy?'buy':'sell'}">${buy?'매수':'매도'}</span>
+        ${mkt(p.currency==='KRW'?'KR':'US')} <span class="sym">${p.symbol}</span>${nmTag(p.symbol)}</div>
+      <div class="row-s" style="white-space:normal">${propReason(p)}</div>
+      <div class="row-s mut" id="fc-${p.id}" style="white-space:normal">📊 예측 불러오는 중…</div></div>
+    <div class="row-r"><div class="v num">${nf(p.qty,4)}</div><div class="v2 mut">수량(주)</div>
+      <div class="v2 mut num">~${c}${nf(p.ref_price)}</div></div></div>`;
+}
+async function fillForecast(p){
+  const el=document.getElementById('fc-'+p.id); if(!el)return;
+  try{
+    const f=await j('/api/forecast/'+encodeURIComponent(p.symbol));
+    if(!f||f.error||!f.band){el.textContent='📊 예측 데이터 부족';return;}
+    const c=p.currency==='USD'?'$':'₩', last=f.last||0;
+    const bz=last*(1+(f.exp_trough_pct||0)/100), sz=last*(1+(f.exp_peak_pct||0)/100);
+    el.innerHTML=`📊 한달 예상 <b>${c}${nf(f.band.p10)}~${c}${nf(f.band.p90)}</b> · `
+      +`매수존~<b>${c}${nf(bz)}</b> · 매도존~<b>${c}${nf(sz)}</b> · `
+      +`기대 <span class="${cls(f.exp_return)}">${pct(f.exp_return)}</span> · 상승확률 ${Math.round((f.prob_up||0)*100)}%`;
+  }catch(e){el.textContent='';}
 }
 
 // ---------- 예측 기록 ----------
@@ -515,12 +576,16 @@ async function loadPred(){
   if(a&&a.evaluated)document.getElementById('acc').textContent=
     `방향 ${Math.round(a.dir_acc*100)}% · 범위 ${Math.round(a.band_acc*100)}% (n=${a.evaluated})`;
   const b=document.getElementById('pred');
-  b.innerHTML=(d&&d.length)?d.slice(0,12).map(p=>
-    `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nmTag(p.symbol)}
-       <span class="tag">${esc(p.status||'')}</span></div>
+  const held=heldSyms();
+  const sorted=(d||[]).slice().sort((x,y)=>(held.has(y.symbol)?1:0)-(held.has(x.symbol)?1:0));  // 보유 먼저
+  b.innerHTML=sorted.length?sorted.slice(0,12).map(p=>{
+    const hd=held.has(p.symbol);
+    const own=hd?'<span class="tag hold">보유</span>':'<span class="tag" style="opacity:.55">관심</span>';
+    return `<div class="row"${hd?'':' style="opacity:.7"'}><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nmTag(p.symbol)}
+       ${own}<span class="tag">${esc(p.status||'')}</span></div>
        <div class="row-s num">기준 ${nf(p.base_price)} · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span>
          ${p.actual_return!=null?` · 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span>`:''}</div></div>
-     <div class="row-r"><div class="v num">${Math.round(p.prob_up*100)}%</div><div class="v2 mut">상승확률</div></div></div>`).join('')
+     <div class="row-r"><div class="v num">${Math.round(p.prob_up*100)}%</div><div class="v2 mut">상승확률</div></div></div>`;}).join('')
     :'<div class="empty">예측 기록 없음 (스케줄 가동 후 누적)</div>';
 }
 
@@ -685,11 +750,20 @@ async function loadCash(){
         <div class="num" style="font-size:21px;font-weight:700">$${usd.toFixed(2)}</div></div>
     </div>`;
 }
+let ORD={items:[],page:0,size:10};
 async function loadOrders(){
-  const d=await j('/api/orders?who='+WHO); if(!d)return;
-  const os=d.orders||[]; const el=document.getElementById('orders');
+  const d=await j('/api/orders?who='+WHO+'&limit=100'); if(!d)return;
+  ORD.items=d.orders||[];
+  const pages=Math.ceil(ORD.items.length/ORD.size)||1;
+  if(ORD.page>=pages)ORD.page=0;                         // 범위 벗어나면(계좌전환 등) 첫장
+  renderOrders();
+}
+function ordPage(d){const pages=Math.ceil(ORD.items.length/ORD.size)||1;ORD.page=Math.max(0,Math.min(ORD.page+d,pages-1));renderOrders();}
+function renderOrders(){
+  const el=document.getElementById('orders'),os=ORD.items;
   if(!os.length){el.innerHTML='<div class="empty">아직 거래 기록이 없어요</div>';return;}
-  el.innerHTML=os.map(o=>{
+  const pages=Math.ceil(os.length/ORD.size);
+  const rows=os.slice(ORD.page*ORD.size,(ORD.page+1)*ORD.size).map(o=>{
     const buy=o.side==='BUY'; const cur=o.currency==='USD'?'$':'₩';
     const wait=o.pending?'<span class="tag" style="background:#3a3417;color:#ffd454">⏳대기</span> ':'';
     const fee=o.fee?` · 수수료 ${cur}${nf(o.fee,2)}`:'';
@@ -701,21 +775,37 @@ async function loadOrders(){
        <div class="row-s num">${detail}</div></div>
      <div class="row-r"><div class="v num">${o.amount?cur+nf(o.amount,2):'<span class=mut>—</span>'}</div></div></div>`;
   }).join('');
+  el.innerHTML=rows+(pages>1?`<div class="pager">
+      <button onclick="ordPage(-1)" ${ORD.page<=0?'disabled':''}>‹ 이전</button>
+      <span class="pg">${ORD.page+1} / ${pages}</span>
+      <button onclick="ordPage(1)" ${ORD.page>=pages-1?'disabled':''}>다음 ›</button></div>`:'');
 }
+let KORD={items:[],page:0,size:10};
 async function loadKisOrders(){
   const d=await j('/api/kis/orders'); if(!d)return;
-  const os=d.orders||[]; const el=document.getElementById('kisorders');
+  KORD.items=d.orders||[];
+  const pages=Math.ceil(KORD.items.length/KORD.size)||1;
+  if(KORD.page>=pages)KORD.page=0;
+  renderKisOrders();
+}
+function kordPage(d){const pages=Math.ceil(KORD.items.length/KORD.size)||1;KORD.page=Math.max(0,Math.min(KORD.page+d,pages-1));renderKisOrders();}
+function renderKisOrders(){
+  const el=document.getElementById('kisorders'),os=KORD.items;
   if(!os.length){el.innerHTML='<div class="empty">최근 40일 거래 기록이 없어요</div>';return;}
-  const icon={'ISA':'🟦','연금':'🟪'};
-  el.innerHTML=os.map(o=>{
+  const icon={'ISA':'🟦','연금':'🟪'}, pages=Math.ceil(os.length/KORD.size);
+  const rows=os.slice(KORD.page*KORD.size,(KORD.page+1)*KORD.size).map(o=>{
     const buy=o.side==='BUY';
     const wait=o.pending?'<span class="tag" style="background:#3a3417;color:#ffd454">⏳대기</span> ':'';
     const part=(o.filled!=null&&o.qty&&+o.filled!==+o.qty)?`${nf(o.filled,0)}/${nf(o.qty,0)}`:nf(o.qty,0);
     return `<div class="row"><div class="row-l"><div class="row-t">
-        ${wait}<span class="tag ${buy?'buy':'sell'}">${o.side_name||(buy?'매수':'매도')}</span> ${icon[o.account]||''} <span class="sym">${o.name||o.symbol}</span></div>
+        ${wait}<span class="tag ${buy?'buy':'sell'}">${o.side_name||(buy?'매수':'매도')}</span> ${icon[o.account]||''} <span class="sym">${o.name||nameOf(o.symbol)||o.symbol}</span></div>
        <div class="row-s num">${o.at} · ${part}주 @₩${nf(o.price,0)}</div></div>
      <div class="row-r"><div class="v num">${o.amount?amt(o.amount):'<span class=mut>—</span>'}</div></div></div>`;
   }).join('');
+  el.innerHTML=rows+(pages>1?`<div class="pager">
+      <button onclick="kordPage(-1)" ${KORD.page<=0?'disabled':''}>‹ 이전</button>
+      <span class="pg">${KORD.page+1} / ${pages}</span>
+      <button onclick="kordPage(1)" ${KORD.page>=pages-1?'disabled':''}>다음 ›</button></div>`:'');
 }
 async function loadAssets(){
   const d=await j('/api/assets'); if(!d)return;
@@ -736,7 +826,46 @@ async function loadAssets(){
     +row('🟦 ISA',S['ISA'])
     +row('🟪 연금',S['연금']);
 }
+// ---------- 실현손익(매도 기준) ----------
+let REAL=null;
+async function loadRealized(){const d=await j('/api/realized');if(!d)return;REAL=d;renderRealized();}
+function renderRealized(){
+  if(!REAL)return; const accs=REAL.accounts||{};
+  if(WHO==='spouse'){ _renderReal('realized','real-st',accs,['토스(남편)']); }
+  else{
+    _renderReal('realized','real-st',accs,['토스(나)','한투']);   // 실계좌 탭(토스·한투)
+    _renderReal('realized-paper','realp-st',accs,['모의']);        // 모의투자 탭
+  }
+}
+function _renderReal(elId,stId,accs,names){
+  const el=document.getElementById(elId),st=document.getElementById(stId);
+  if(!el)return;
+  names=names.filter(n=>accs[n]);
+  const months={};                                   // month → {total, sells[]}
+  names.forEach(n=>(accs[n].sells||[]).forEach(s=>{
+    const m=months[s.month]||(months[s.month]={total:0,sells:[]});
+    m.total+=s.realized_krw; m.sells.push({...s,acc:n});
+  }));
+  const mk=Object.keys(months).sort().reverse();
+  const cum=mk.reduce((a,m)=>a+months[m].total,0);
+  if(st)st.innerHTML=mk.length?`누적 <b class="${cls(cum)}">${samt(cum)}</b>`:'';
+  if(!mk.length){el.innerHTML='<div class="empty">매도(실현) 내역이 아직 없어요</div>';return;}
+  const multi=names.length>1;
+  el.innerHTML=mk.map(m=>{
+    const mm=months[m];
+    const rows=mm.sells.slice().sort((a,b)=>a.date<b.date?1:-1).map(s=>{
+      const c=s.currency==='USD'?'$':'₩', win=s.realized_krw>=0;
+      return `<div class="row sub-row"><div class="row-l">
+          <div class="row-t"><span class="sym">${s.symbol}</span>${nmTag(s.symbol)}${multi?` <span class="tag">${s.acc}</span>`:''}</div>
+          <div class="row-s num" style="white-space:normal">${s.date} · ${nf(s.qty,2)}주 · <b>${c}${nf(s.buy_avg)}</b>에 사서 <b>${c}${nf(s.sell_price)}</b>에 ${win?'팔아':'손절'} <span class="${cls(s.realized_krw)}">(${win?'+':''}${samt(s.realized_krw).replace('+','')} ${win?'수익':'손실'})</span></div>
+        </div></div>`;}).join('');
+    return `<div class="grp" style="cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none'">
+        <span>📅 ${m} <span class="mut" style="font-weight:400;font-size:11px">${mm.sells.length}건</span></span>
+        <span class="${cls(mm.total)}">${samt(mm.total)} ▾</span></div>
+      <div style="display:none">${rows}</div>`;}).join('');
+}
 function loadAll(){
+  loadNames();loadRealized();
   loadPortfolio();loadProposals();loadPred();loadScreen();loadScreenKr();loadBT();
   loadCash();loadOrders();
   if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(0);loadExpo();}  // 남편=토스만
@@ -746,7 +875,8 @@ loadAll(); updateSessions(); loadMkt();
 setInterval(updateSessions,30000);
 setInterval(loadMkt,3600000);                                   // 휴장 여부 1시간마다
 setInterval(pollQuotes,10000);
-setInterval(()=>{loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(PTR.page);},60000);
+setInterval(()=>{loadPortfolio();loadCash();loadOrders();loadProposals();loadPred();
+  if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(PTR.page);}},60000);
 </script>
 
 <!-- 주린이 '쉬운 용어' 도움말 (검증세션 추가, 기존 렌더링 무간섭) -->

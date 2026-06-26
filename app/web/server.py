@@ -250,17 +250,20 @@ def exposure():
     노출 합산. '분산 착시'(여러 ETF지만 속은 같은 대형주) 점검. 5분 캐시."""
     if (c := _cache_get("web:expo")):
         return c
-    from bot.etf import lookthrough, top_constituents
+    from bot.etf import lookthrough, top_constituents, stock_name
     hold = []                                        # (symbol, value_krw)
+    names: dict[str, str] = {}                       # 보유 종목명(코드→이름)
     partial = False
     try:
         for x in portfolio("").get("positions", []):
             hold.append((x["symbol"], x["value_krw"]))
+            names[x["symbol"]] = x.get("name") or ""
     except Exception:  # noqa: BLE001
         partial = True
     try:
         for x in kis_accounts().get("positions", []):
             hold.append((x["symbol"], x["value_krw"]))
+            names[x["symbol"]] = x.get("name") or ""
     except Exception:  # noqa: BLE001
         partial = True
     total = sum(v for _, v in hold) or 1
@@ -275,7 +278,8 @@ def exposure():
             expo[sym] = expo.get(sym, 0) + v
     ranked = sorted(expo.items(), key=lambda x: -x[1])
     out = {"total": round(total), "n": len(expo), "partial": partial,
-           "top": [{"symbol": s, "krw": round(v), "pct": round(v / total * 100, 1)}
+           "top": [{"symbol": s, "name": names.get(s) or stock_name(s),
+                    "krw": round(v), "pct": round(v / total * 100, 1)}
                    for s, v in ranked[:12]],
            "top5_pct": round(sum(v for _, v in ranked[:5]) / total * 100, 1)}
     _cache_set("web:expo", out, 300)
@@ -324,10 +328,22 @@ def screen(refresh: bool = False, market: str = "us"):
         except Exception:  # noqa: BLE001
             pass
     results = run_screen(candles)
+    preds = {}                          # 종목별 최신 예측(미래 기대수익·상승확률)
+    try:
+        with SessionLocal() as s:
+            syms = [r.symbol for r in results]
+            for p in (s.query(Prediction).filter(Prediction.symbol.in_(syms))
+                      .order_by(Prediction.id.desc())):
+                if p.symbol not in preds:
+                    preds[p.symbol] = {"exp_return": p.exp_return, "prob_up": p.prob_up,
+                                       "horizon": p.horizon_days}
+    except Exception:  # noqa: BLE001
+        pass
     out = [{
         "symbol": r.symbol, "score": round(r.score, 1), "last": r.last,
         "ret_1m": r.ret_1m, "ret_3m": r.ret_3m, "above_sma200": r.above_sma200,
         "trend_aligned": r.trend_aligned, "vol_20d": round(r.vol_20d, 2),
+        "forecast": preds.get(r.symbol),
     } for r in results]
     _cache_set(key, out, 3600)
     return out
@@ -697,10 +713,40 @@ def _chat_context(who: str = "me") -> str:
             pass
     try:
         sc = screen()[:8]
-        L.append("[추세 스크리너 상위(점수=최근 상승세 순위, 매수신호 아님)]")
+        L.append("[미국 추세 스크리너 상위(점수=최근 상승세 순위, 매수신호 아님)]")
         for r in sc:
             L.append(f"  - {r['symbol']} 점수 {r['score']}"
                      f"{' 정배열' if r['trend_aligned'] else ''} (1M {r['ret_1m']}% 3M {r['ret_3m']}%)")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        sck = screen(market="kr")[:6]
+        if sck:
+            L.append("[국내(KR) 추세 스크리너 상위(점수=상승세, 매수신호 아님)]")
+            for r in sck:
+                L.append(f"  - {r['symbol']} 점수 {r['score']}"
+                         f"{' 정배열' if r['trend_aligned'] else ''} (1M {r['ret_1m']}% 3M {r['ret_3m']}%)")
+    except Exception:  # noqa: BLE001
+        pass
+    try:                                       # 모델 예측(미래 추정) — 종목별 최신
+        from bot.storage.models import Prediction
+        with SessionLocal() as s:
+            seen = {}
+            for pr in s.query(Prediction).order_by(Prediction.id.desc()).limit(150):
+                seen.setdefault(pr.symbol, pr)
+        if seen:
+            L.append("[모델 예측(몬테카를로, 약 21일 앞 추정 — 단정 아님, '과거 추이'와 구분)]")
+            for sym, pr in list(seen.items())[:20]:
+                L.append(f"  - {sym}: 상승확률 {round((pr.prob_up or 0)*100)}%, "
+                         f"기대수익 {round(pr.exp_return or 0,1)}%")
+    except Exception:  # noqa: BLE001
+        pass
+    try:                                       # 예측 적중률(실측 신뢰도)
+        ac = accuracy()
+        if ac.get("evaluated"):
+            L.append(f"[모델 예측 적중률(실측): 방향 {round(ac['dir_acc']*100)}% · "
+                     f"범위 {round(ac['band_acc']*100)}% (표본 {ac['evaluated']}건). "
+                     f"50%대면 동전던지기 수준이니 예측은 참고만]")
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -737,6 +783,10 @@ def _chat_context(who: str = "me") -> str:
         L.append("[계좌 매매제약] 연금저축=국내상장 ETF/ETN·비레버리지만(해외상장·개별주·레버리지 불가). "
                  "ISA중개형=국내상장 개별주/ETF(해외상장 직접불가, 순이익500만 비과세). 소수점=해외포함 자유. "
                  "토스(미국)=현금 거의 없어 신규매수 여력 적음. 교체는 같은 계좌 안에서만(계좌간 이동 시 연금 페널티·ISA혜택 손실).")
+        L.append("[종목별 계좌 매수가능 — 아래 분류로 정확히 답할 것]\n"
+                 "  · 국내상장 비레버리지 ETF(069500·360750·379800·458730·133690·161510·329200·273130·484790·210780 등): 연금·ISA·일반 모두 매수 가능\n"
+                 "  · 국내상장 레버리지 ETF(122630 KODEX레버리지·233740 코스닥150레버리지): ISA·일반 가능, **연금은 레버리지라 불가**(국내상장이라 ISA는 됨)\n"
+                 "  · 미국상장 전부(SCHD·JEPI·JEPQ·QQQI·SPYI·VIG·DGRO·O·NVDA·TSLA·SOXL·TQQQ 등): 소수점·토스·일반계좌만, 연금·ISA는 직접매수 불가")
     return "\n".join(L)
 
 
@@ -766,7 +816,10 @@ def chat(body: dict):
         "1) 매수/매도 의견은 반드시 데이터 근거와 함께. 데이터에 없는 사실은 지어내지 말고 모른다고 한다.\n"
         "2) 스크리너 점수는 매수신호가 아님(신뢰도 참고). 계좌 매매제약을 꼭 반영.\n"
         "3) 단정/보장 금지. '참고이며 최종 결정과 책임은 본인'임을 의식하되 매 답변에 길게 면책 달지 말 것.\n"
-        "4) 간결하게, 핵심 위주 불릿으로. 한국어.\n\n"
+        "4) 과거와 미래를 반드시 구분: '과거에 N% 올랐다(=이미 지난 일)'와 '앞으로 모델 추정 N%/"
+        "상승확률 N%(=예측)'를 헷갈리지 않게 따로 말한다.\n"
+        "5) [완전 주린이용] 한 번에 핵심 2~3개만(쏟아내지 말 것). 따뜻하고 격려하는 말투로. "
+        "답변 맨 끝에 반드시 '👉 쉽게 말하면: …' 한 줄 요약을 붙인다. 한국어 불릿.\n\n"
         f"[현재 데이터]\n{ctx}\n\n[대화]{convo}\n사용자: {msg}\n분석봇:")
     try:
         from bot.sentiment import _llm_chat
