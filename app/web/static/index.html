@@ -157,6 +157,11 @@
   </div>
 
   <div class="card span2" data-tab="real">
+    <h2>🔍 실질 노출 (룩스루) <span class="sub" id="expo-st"></span></h2>
+    <div id="expo"><div class="empty">ETF 속 실제 종목 노출 계산 중…</div></div>
+  </div>
+
+  <div class="card span2" data-tab="real">
     <h2>💬 분석 챗봇 <span class="mut" style="font-weight:400;font-size:11.5px">보유·스크리너 근거 · 참고용</span></h2>
     <div id="chat-msgs" class="chat-msgs"></div>
     <div class="chat-chips" id="chat-chips"></div>
@@ -433,6 +438,18 @@ function renderNews(){
 }
 
 // ---------- 리밸런싱 제안 ----------
+async function loadExpo(){
+  const d=await j('/api/exposure'); const e=document.getElementById('expo'),st=document.getElementById('expo-st');
+  if(!d||!d.top){return;}
+  const warn=d.top5_pct>=60;
+  st.innerHTML=`상위5 <b class="${warn?'down':''}">${d.top5_pct}%</b> 집중 · 실질 ${d.n}종`+
+    (warn?' <span class="down" style="font-size:.85em">⚠️분산착시</span>':'');
+  const mx=d.top[0]?d.top[0].pct:1;
+  e.innerHTML=`<div class="help-box" style="border-bottom:1px solid var(--line)">여러 ETF를 보유해도 <b>속을 뚫어보면(룩스루)</b> 실제로 어떤 기업에 얼마나 노출됐는지 — 진짜 분산 여부 점검.</div>`+
+    d.top.map(t=>`<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${t.symbol}</span>${nmTag(t.symbol)}</div>
+      <div class="barwrap"><span class="bar"><i style="width:${Math.max(2,t.pct/mx*100)}%"></i></span></div></div>
+     <div class="row-r"><div class="v num">${t.pct}%</div><div class="v2 mut num">${amt(t.krw)}</div></div></div>`).join('');
+}
 async function loadProposals(){
   const d=await j('/api/proposals'); const b=document.getElementById('prop');
   const open=(d||[]).filter(p=>p.status==='pending');
@@ -595,7 +612,7 @@ function showTab(t){
 }
 initChips(); renderChat();
 showTab((function(){try{return localStorage.getItem('sbtab')||'real'}catch(e){return 'real'}})());
-function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(0);loadScreen();loadScreenKr();loadBT();}
+function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(0);loadScreen();loadScreenKr();loadBT();loadExpo();}
 loadAll(); updateSessions(); loadMkt();
 setInterval(updateSessions,30000);
 setInterval(loadMkt,3600000);                                   // 휴장 여부 1시간마다

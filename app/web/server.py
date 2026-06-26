@@ -102,6 +102,9 @@ def health():
 
 @app.get("/api/portfolio")
 def portfolio(broker: str = Query(default="")):
+    ck = f"web:portfolio:{broker or 'def'}"
+    if (c := _cache_get(ck)):
+        return c
     b = get_broker(broker or None)
     fx = b.usdkrw()
     bal = b.get_balance()
@@ -109,7 +112,7 @@ def portfolio(broker: str = Query(default="")):
     # 토스 앱과 동일하게 토스 rate 사용. 금액은 rate에 맞춰 도출(토스 amount는 rate와 불일치).
     cost = sum(p.qty * p.avg_price for p in bal.positions)
     tp, dp = bal.total_pnl_pct, bal.daily_pnl_pct
-    return {
+    out = {
         "broker": b.name, "fx": fx, "cash": bal.cash, "total_krw": total_krw,
         "daily_pnl_pct": dp, "total_pnl_pct": tp,
         "daily_pnl_amt_krw": round(total_krw * (dp / 100)) if dp is not None else None,
@@ -121,6 +124,8 @@ def portfolio(broker: str = Query(default="")):
             "value": p.market_value, "value_krw": p.market_value_krw(fx),
         } for p in bal.positions],
     }
+    _cache_set(ck, out, 60)
+    return out
 
 
 @app.get("/api/news")
@@ -226,6 +231,43 @@ def market_status():
     except Exception:  # noqa: BLE001
         pass
     _cache_set("web:mktstat", out, 21600)
+    return out
+
+
+@app.get("/api/exposure")
+def exposure():
+    """실질 노출(룩스루) — 실계좌(토스+한투) 보유 ETF를 구성종목으로 뚫어 실제 기업
+    노출 합산. '분산 착시'(여러 ETF지만 속은 같은 대형주) 점검. 5분 캐시."""
+    if (c := _cache_get("web:expo")):
+        return c
+    from bot.etf import lookthrough, top_constituents
+    hold = []                                        # (symbol, value_krw)
+    try:
+        for x in portfolio("").get("positions", []):
+            hold.append((x["symbol"], x["value_krw"]))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        for x in kis_accounts().get("positions", []):
+            hold.append((x["symbol"], x["value_krw"]))
+    except Exception:  # noqa: BLE001
+        pass
+    total = sum(v for _, v in hold) or 1
+    expo: dict[str, float] = {}
+    for sym, v in hold:
+        cons = top_constituents(sym, 10) if lookthrough(sym) else None
+        if cons:                                     # ETF → 구성종목으로 분해
+            wsum = sum(w for _, w in cons) or 1
+            for c, w in cons:
+                expo[c] = expo.get(c, 0) + v * (w / wsum)
+        else:                                        # 개별주/룩스루 없음 → 그대로
+            expo[sym] = expo.get(sym, 0) + v
+    ranked = sorted(expo.items(), key=lambda x: -x[1])
+    out = {"total": round(total), "n": len(expo),
+           "top": [{"symbol": s, "krw": round(v), "pct": round(v / total * 100, 1)}
+                   for s, v in ranked[:12]],
+           "top5_pct": round(sum(v for _, v in ranked[:5]) / total * 100, 1)}
+    _cache_set("web:expo", out, 300)
     return out
 
 
@@ -417,6 +459,15 @@ def screen_backtest():
     return out
 
 
+@app.get("/api/backtest")
+def backtest_view():
+    """전략 백테스트 결과(주1회 cmd_backtest가 redis 기록): 점수 모멘텀 vs 평균회귀 vs
+    벤치 +유의성 t값, 돌파 fee 민감도. 미실행이면 status 안내."""
+    if (c := _cache_get("backtest:strategy")):
+        return c
+    return {"status": "미실행", "hint": "python -m bot.main backtest"}
+
+
 @app.get("/api/paper/trades")
 def paper_trades(page: int = 0, size: int = 8):
     """모의 거래내역 — US=KIS 체결원장(ccnl), KR=OrderLog(모의 국내 체결조회 미지원).
@@ -483,7 +534,7 @@ def _chat_context() -> str:
     """챗봇 근거 데이터 — 현재 보유·스크리너·신뢰도·예측·계좌제약 요약."""
     L = []
     try:
-        p = portfolio()
+        p = portfolio("")
         toss_tot = (p.get("cash", 0) or 0) + sum(x["value_krw"] for x in p.get("positions", []))
         L.append(f"[토스 실계좌(미국) 총 {round(toss_tot):,}원, 현금 {round(p.get('cash',0)):,}원, "
                  f"오늘 {p.get('daily_pnl_pct')}% / 전체 {p.get('total_pnl_pct')}%]")
