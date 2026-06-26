@@ -217,9 +217,10 @@ def run_paper(dry: bool = False) -> dict:
             ref = next((t["price"] for t in targets if t["symbol"] == sym),
                        p.current_price if p else 0)              # 기준가(거래대금 근사)
             if mk == "KR":
-                res = kis.place_order(sym, side, qty)            # 국내 시장가
+                res = kis.place_order(sym, side, qty)            # 국내 시장가(유동성 큰 ETF→슬리피지 미미)
             else:
-                lim = ref * (1.01 if side == Side.BUY else 0.99)  # 마켓터블 지정가
+                live = toss.get_price(sym) or ref                # 실시간가(US 갭 대응), 실패시 어제종가
+                lim = live * (1.01 if side == Side.BUY else 0.99)  # 마켓터블 지정가
                 res = kis.place_overseas_order(sym, side, qty, lim)
             time.sleep(0.4)
             executed.append(f"{'✅' if res.ok else '❌'} {mk} {side.value} {sym} {qty}: {res.message}")
