@@ -568,7 +568,7 @@ def names_view():
             N.learn_positions((getter() or {}).get("positions", []))
         except Exception:  # noqa: BLE001  (학습 실패는 무시)
             pass
-    out = {"names": N.all_learned()}
+    out = {"names": N.resolved()}                  # 학습분 + 정적 한글 시드(시드 우선)
     _cache_set("web:names", out, 60)
     return out
 
