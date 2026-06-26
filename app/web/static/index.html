@@ -319,9 +319,10 @@ function updateHeader(){
   const total=(ST.live_total||0)+(KIST.total||0);
   document.getElementById('total').textContent=amt(total);
   const parts=[];
-  if(ST.daily_amt!=null){  // 전체자산 기준 오늘% (한투는 daily 미제공=오늘 변동 0 간주)
-    const base=total-ST.daily_amt, dp=base>0?ST.daily_amt/base*100:ST.daily;
-    parts.push(`오늘 <b class="${cls(dp)}">${pct(dp)} (${samt(ST.daily_amt)})</b>`);
+  const kd=(KIST.data&&KIST.data.daily_pnl_amt_krw)||0;   // 한투 오늘손익(전일종가 대비)
+  if(ST.daily_amt!=null||kd){  // 토스+한투 오늘손익 합산, 전체자산 기준 %
+    const tAmt=(ST.daily_amt||0)+kd, base=total-tAmt, dp=base>0?tAmt/base*100:0;
+    parts.push(`오늘 <b class="${cls(dp)}">${pct(dp)} (${samt(tAmt)})</b>`);
   }else if(ST.daily!=null){
     parts.push(`오늘 <b class="${cls(ST.daily)}">${pct(ST.daily)}</b>`);
   }
@@ -510,7 +511,8 @@ async function loadKis(){
 function renderKis(){
   const d=KIST.data; if(!d)return;
   document.getElementById('kis-st').innerHTML='총 '+amt(d.total)+
-    (d.total_pnl_pct!=null?`<span class="seg ${cls(d.total_pnl_pct)}">${pct(d.total_pnl_pct)}${d.total_pnl_amt_krw!=null?' ('+samt(d.total_pnl_amt_krw)+')':''}</span>`:'');
+    (d.total_pnl_pct!=null?`<span class="seg ${cls(d.total_pnl_pct)}">전체 ${pct(d.total_pnl_pct)}${d.total_pnl_amt_krw!=null?' ('+samt(d.total_pnl_amt_krw)+')':''}</span>`:'')+
+    (d.daily_pnl_amt_krw!=null?`<span class="seg ${cls(d.daily_pnl_pct)}">오늘 ${pct(d.daily_pnl_pct)} (${samt(d.daily_pnl_amt_krw)})</span>`:'');
   const groups={}; (d.positions||[]).forEach(p=>{(groups[p.account]=groups[p.account]||[]).push(p)});
   const icon={'ISA':'🟦','연금':'🟪','소수점':'🟩'}; let html='';
   ['ISA','연금','소수점'].forEach(acc=>{

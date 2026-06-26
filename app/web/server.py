@@ -178,6 +178,30 @@ def kis_accounts():
     val = sum(p["value_krw"] for p in out["positions"])
     out["total_pnl_pct"] = round((val / cost - 1) * 100, 2) if cost else None
     out["total_pnl_amt_krw"] = round(val - cost) if cost else None
+    # 오늘 손익 = KR 종목 전일종가 대비(전일종가 1h 캐시). 한투 daily는 API 미제공 → 직접 산출
+    daily = 0.0
+    _kb = None
+    for p in out["positions"]:
+        if p["currency"] != "KRW":
+            continue
+        pc = _r.get(f"web:prevclose:{p['symbol']}")
+        prev = float(pc) if pc is not None else 0.0
+        if not prev:
+            try:
+                from bot.brokers.kis import KISBroker
+                if _kb is None:
+                    _kb = KISBroker(account=("63776023", "01"), paper=False)
+                cs = _kb.get_candles(p["symbol"], "1d", 5)
+                prev = cs[-2]["close"] if len(cs) >= 2 else 0.0
+                if prev:
+                    _r.set(f"web:prevclose:{p['symbol']}", prev, ex=3600)
+            except Exception:  # noqa: BLE001
+                prev = 0.0
+        if prev:
+            daily += p["qty"] * (p["price"] - prev)
+    out["daily_pnl_amt_krw"] = round(daily)
+    base_today = out["total"] - daily
+    out["daily_pnl_pct"] = round(daily / base_today * 100, 2) if base_today else None
     _cache_set("web:kis", out, 60)
     return out
 
