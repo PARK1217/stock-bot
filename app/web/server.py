@@ -319,6 +319,14 @@ def paper():
         # 가용현금 = 총자산 - 보유평가합 으로 일관 계산(이중표시 방지).
         out["invested"] = sum(p["value_krw"] for p in out["positions"])
         out["cash"] = total - out["invested"]
+        st = _r.get("paper:strategy")                    # 전략 현황(코어/새틀 선정)
+        if st:
+            strat = json.loads(st)
+            out["strategy"] = strat
+            core, sat = set(strat.get("core", [])), set(strat.get("sat", []))
+            for p in out["positions"]:                    # 보유에 코어/새틀/이탈 태그
+                p["bucket"] = ("core" if p["symbol"] in core else
+                               "sat" if p["symbol"] in sat else "exit")
     except Exception as e:  # noqa: BLE001
         out["error"] = str(e)
     with SessionLocal() as s:

@@ -412,13 +412,15 @@ function renderPaper(){
     `<span class="seg mut" style="opacity:.7">가상 5억</span>`;
   const b=document.getElementById('paper');
   const ps=(d.positions||[]).slice().sort((a,b)=>b.value_krw-a.value_krw);
-  b.innerHTML=ps.length?ps.map(p=>
-    `<div class="row"><div class="row-l"><div class="row-t">${mkt(p.market)} <span class="sym">${p.symbol}</span>
+  const BKT={core:['코어','#17283a','#6fb3ff'],sat:['새틀','#3a2a17','#ffb454'],exit:['이탈','#3a1a1f','#ff5c6c']};
+  b.innerHTML=ps.length?ps.map(p=>{
+    const bk=BKT[p.bucket]; const bt=bk?`<span class="tag" style="background:${bk[1]};color:${bk[2]}">${bk[0]}</span> `:'';
+    return `<div class="row"><div class="row-l"><div class="row-t">${mkt(p.market)} ${bt}<span class="sym">${p.symbol}</span>
        <span class="nm">${esc(p.name||'')}</span></div>
        <div class="row-s num">${nf(p.qty,2)}주 · ${nf(p.price)}${p.market==='US'?'$':'₩'}</div></div>
      <div class="row-r"><div class="v ${cls(p.pnl_pct)} num">${pct(p.pnl_pct)}</div>
        <div class="v2 ${cls(p.pnl_pct)} num">${samt(pnlAmt(p.value_krw,p.pnl_pct))}</div>
-       <div class="v2 mut num">${amt(p.value_krw)}</div></div></div>`).join('')
+       <div class="v2 mut num">${amt(p.value_krw)}</div></div></div>`;}).join('')
     :`<div class="empty">${d.error?'조회 오류':'장중 자동매매 시작 후 채워짐 (현금 '+amt(d.cash)+')'}</div>`;
 }
 

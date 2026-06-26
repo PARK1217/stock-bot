@@ -184,8 +184,19 @@ def run_paper(dry: bool = False) -> dict:
                                       holdings=len(held)))
         session.commit()
 
-    return {"total": total_krw, "market": market or "마감",
-            "core": [f"{t['symbol']}({t['market']})" for t in core_t],
-            "sat": [f"{t['symbol']}({t['market']})" for t in sat_t],
-            "targets": [f"{t['symbol']}({t['market']})" for t in targets],
-            "orders": executed}
+    result = {"total": total_krw, "market": market or "마감",
+              "core": [f"{t['symbol']}({t['market']})" for t in core_t],
+              "sat": [f"{t['symbol']}({t['market']})" for t in sat_t],
+              "targets": [f"{t['symbol']}({t['market']})" for t in targets],
+              "orders": executed}
+    # 대시보드용 전략 현황 저장(코어/새틀 심볼, 슬롯 예산)
+    try:
+        import json as _json
+        _redis.set("paper:strategy", _json.dumps({
+            "core": [t["symbol"] for t in core_t],
+            "sat": [t["symbol"] for t in sat_t],
+            "core_per": round(core_per), "sat_per": round(sat_per),
+            "ts": str(datetime.now())[:16]}), ex=172800)
+    except Exception:  # noqa: BLE001
+        pass
+    return result
