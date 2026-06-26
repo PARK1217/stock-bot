@@ -146,7 +146,7 @@
 
 <div class="tabs">
   <button class="tab on" data-t="real" onclick="showTab('real')">💰 실계좌</button>
-  <button class="tab" data-t="paper" onclick="showTab('paper')">🧪 모의투자</button>
+  <button class="tab" data-t="paper" data-me="1" onclick="showTab('paper')">🧪 모의투자</button>
   <button class="tab" data-t="watch" onclick="showTab('watch')">📈 감시·분석</button>
 </div>
 </div>
@@ -622,9 +622,12 @@ function setUser(w){
 }
 function showTab(t){
   const sp=WHO==='spouse';
+  if(sp&&t==='paper')t='real';                       // 모의투자는 본인 전용 → 실계좌로
+  document.querySelectorAll('.tab').forEach(b=>{
+    b.style.display=(sp&&b.dataset.me)?'none':'';     // 남편=본인전용 탭 버튼 숨김
+    b.classList.toggle('on',b.dataset.t===t);});
   document.querySelectorAll('.wrap .card').forEach(c=>{
     c.style.display=(c.dataset.tab===t && !(sp&&c.dataset.me))?'':'none';});
-  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
   try{localStorage.setItem('sbtab',t);}catch(e){}
   window.scrollTo(0,0);
 }
