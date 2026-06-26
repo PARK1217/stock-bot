@@ -442,6 +442,16 @@ def _chat_context() -> str:
                      f"이 배당/인컴 ETF군은 점수 높을수록 오히려 덜 오르는 평균회귀 경향 → 점수 추격매수 부적합]")
     except Exception:  # noqa: BLE001
         pass
+    try:
+        st = _r.get("paper:strategy")
+        if st:
+            sg = json.loads(st)
+            rg = "위험회피(하락장 방어, 새틀 중단·코어 절반·현금↑)" if sg.get("regime") == "risk_off" else "정상(risk-on)"
+            L.append(f"[모의 자동매매 전략현황] 코어-새틀라이트+MA50 추세추종. "
+                     f"시장레짐={rg}. 코어(70%) {sg.get('core')}, 새틀(30%) {sg.get('sat')}. "
+                     f"MA50 추세 꺾인 종목은 매도·현금화. 점수추격/단타는 검증상 손해라 안 씀.")
+    except Exception:  # noqa: BLE001
+        pass
     L.append("[계좌 매매제약] 연금저축=국내상장 ETF/ETN·비레버리지만(해외상장·개별주·레버리지 불가). "
              "ISA중개형=국내상장 개별주/ETF(해외상장 직접불가, 순이익500만 비과세). 소수점=해외포함 자유. "
              "토스(미국)=현금 거의 없어 신규매수 여력 적음. 교체는 같은 계좌 안에서만(계좌간 이동 시 연금 페널티·ISA혜택 손실).")

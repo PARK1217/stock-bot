@@ -189,6 +189,7 @@
   <div class="card span2">
     <h2>🧪 모의 자동매매 <span class="mut" style="font-weight:400">(전략검증)</span>
         <span class="sub" id="paper-st"></span></h2>
+    <div id="paper-chart"></div>
     <div id="paper"><div class="empty">—</div></div>
     <div class="sub-h"><span>📜 거래내역</span><span id="paper-trc"></span></div>
     <div id="paper-tr"><div class="empty">—</div></div>
@@ -222,6 +223,16 @@ function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 function md(s){s=esc(s);s=s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
   s=s.replace(/^\s*[-*]\s+/gm,'• ').replace(/\n+/g,' ');return s;}
 function mkt(m){return `<span class="tag ${m==='US'?'us':'kr'}">${m}</span>`;}
+function sparkline(hist){
+  const v=hist.map(h=>h.total); if(v.length<2)return '';
+  const SEED=5e8, mn=Math.min(...v,SEED), mx=Math.max(...v,SEED), rng=mx-mn||1, W=300,H=44,n=v.length;
+  const y=x=>(H-3-(x-mn)/rng*(H-6)).toFixed(1);
+  const pt=v.map((x,i)=>`${(i/(n-1)*W).toFixed(1)},${y(x)}`).join(' ');
+  const col=v[v.length-1]>=SEED?'var(--up)':'var(--down)';
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:44px;display:block">
+    <line x1="0" y1="${y(SEED)}" x2="${W}" y2="${y(SEED)}" stroke="var(--mut)" stroke-dasharray="3 3" stroke-width="0.6" opacity="0.5"/>
+    <polyline points="${pt}" fill="none" stroke="${col}" stroke-width="1.6"/></svg>`;
+}
 function toggleHelp(id){const e=document.getElementById(id);if(e)e.style.display=e.style.display==='none'?'block':'none';}
 
 // ---------- 시장 세션 ----------
@@ -406,10 +417,15 @@ let PST=null;
 async function loadPaper(){const d=await j('/api/paper'); if(!d)return; PST=d; renderPaper();}
 function renderPaper(){
   const d=PST; if(!d)return;
+  const rg=d.strategy&&d.strategy.regime;
   document.getElementById('paper-st').innerHTML=`총 ${amt(d.total)}`+
     (d.ret_pct!=null?`<span class="seg ${cls(d.ret_pct)}">${pct(d.ret_pct)} (${samt(d.total-500000000)})</span>`:'<span class="seg">시작 전</span>')+
     (d.invested?`<span class="seg mut">투자 ${amt(d.invested)} · 현금 ${amt(d.cash)}</span>`:'')+
+    (rg?`<span class="seg" style="color:${rg==='risk_off'?'var(--down)':'var(--up)'}">${rg==='risk_off'?'⚠️방어모드':'🟢정상'}</span>`:'')+
     `<span class="seg mut" style="opacity:.7">가상 5억</span>`;
+  const ch=document.getElementById('paper-chart');
+  if(ch)ch.innerHTML=(d.history&&d.history.length>1)
+    ?`<div style="padding:9px 14px;border-bottom:1px solid var(--line)"><div class="mut" style="font-size:11px;margin-bottom:4px">자산 추이 <span style="opacity:.6">(점선=5억 기준)</span></div>${sparkline(d.history)}</div>`:'';
   const b=document.getElementById('paper');
   const ps=(d.positions||[]).slice().sort((a,b)=>b.value_krw-a.value_krw);
   const BKT={core:['코어','#17283a','#6fb3ff'],sat:['새틀','#3a2a17','#ffb454'],exit:['이탈','#3a1a1f','#ff5c6c']};

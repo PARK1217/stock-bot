@@ -111,6 +111,17 @@ def _rank_pool(pool, market, get_candles) -> list[dict]:
     return out
 
 
+def _market_regime(toss) -> str:
+    """시장 대표(SPY) MA50 추세 — 'risk_on'(위)/'risk_off'(아래). 하락장 방어용."""
+    try:
+        closes = [c["close"] for c in toss.get_candles("SPY", "1d", 200) if c["close"] > 0]
+        if len(closes) >= TREND_MA + 1:
+            return "risk_on" if closes[-1] > sum(closes[-TREND_MA:]) / TREND_MA else "risk_off"
+    except Exception:  # noqa: BLE001
+        pass
+    return "risk_on"
+
+
 def _select(kis, toss) -> tuple[list[dict], list[dict]]:
     """코어/새틀라이트 각각 추세 통과 상위 N종 선정."""
     core = _rank_pool(CORE_KR, "KR", kis.get_candles) + _rank_pool(CORE_US, "US", toss.get_candles)
@@ -126,10 +137,12 @@ def run_paper(dry: bool = False) -> dict:
     fx = toss.usdkrw() or 1540.0
 
     core_t, sat_t = _select(kis, toss)
+    regime = _market_regime(toss)
+    if regime == "risk_off":                 # 시장 하락추세 → 공격 중단, 방어
+        sat_t = []
     targets = core_t + sat_t
     if not targets:
-        # 추세 통과 종목이 하나도 없음(하락장) → 신규매수 안 함, 보유는 아래서 정리
-        log.info("추세 통과 종목 없음 — 매수 보류")
+        log.info("추세 통과 종목 없음/방어 — 매수 보류")
     tsyms = {t["symbol"] for t in targets}
     sat_syms = {t["symbol"] for t in sat_t}
 
@@ -141,8 +154,11 @@ def run_paper(dry: bool = False) -> dict:
     kr_pnl = sum((p.current_price - p.avg_price) * p.qty for p in kbal.positions)
     us_pnl = sum((p.current_price - p.avg_price) * p.qty for p in obal.positions) * fx
     total_krw = 500_000_000 + kr_pnl + us_pnl
-    core_per = total_krw * CORE_W / CORE_N            # 코어 슬롯당 예산
-    sat_per = total_krw * (1 - CORE_W) / SAT_N        # 새틀 슬롯당 예산
+    if regime == "risk_off":                         # 하락장: 코어 50%만(절반 현금)
+        core_per, sat_per = total_krw * 0.5 / CORE_N, 0.0
+    else:
+        core_per = total_krw * CORE_W / CORE_N
+        sat_per = total_krw * (1 - CORE_W) / SAT_N
     per_of = {t["symbol"]: (sat_per if t["symbol"] in sat_syms else core_per) for t in targets}
     market = _open_market()
 
@@ -184,18 +200,18 @@ def run_paper(dry: bool = False) -> dict:
                                       holdings=len(held)))
         session.commit()
 
-    result = {"total": total_krw, "market": market or "마감",
+    result = {"total": total_krw, "market": market or "마감", "regime": regime,
               "core": [f"{t['symbol']}({t['market']})" for t in core_t],
               "sat": [f"{t['symbol']}({t['market']})" for t in sat_t],
               "targets": [f"{t['symbol']}({t['market']})" for t in targets],
               "orders": executed}
-    # 대시보드용 전략 현황 저장(코어/새틀 심볼, 슬롯 예산)
+    # 대시보드용 전략 현황 저장(코어/새틀 심볼, 슬롯 예산, 시장레짐)
     try:
         import json as _json
         _redis.set("paper:strategy", _json.dumps({
             "core": [t["symbol"] for t in core_t],
             "sat": [t["symbol"] for t in sat_t],
-            "core_per": round(core_per), "sat_per": round(sat_per),
+            "core_per": round(core_per), "sat_per": round(sat_per), "regime": regime,
             "ts": str(datetime.now())[:16]}), ex=172800)
     except Exception:  # noqa: BLE001
         pass
