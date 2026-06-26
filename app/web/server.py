@@ -222,13 +222,21 @@ def quotes(symbols: str = Query(default="")):
 
 # ---------------- 스크리너 (캐시 1h) ----------------
 @app.get("/api/screen")
-def screen(refresh: bool = False):
-    if not refresh and (c := _cache_get("web:screen")):
+def screen(refresh: bool = False, market: str = "us"):
+    market = "kr" if market.lower() == "kr" else "us"
+    key = f"web:screen:{market}"
+    if not refresh and (c := _cache_get(key)):
         return c
-    from bot.screener import screen as run_screen, DEFAULT_WATCHLIST
-    b = get_broker()
+    from bot.screener import screen as run_screen, DEFAULT_WATCHLIST, KR_WATCHLIST
+    if market == "kr":
+        from bot.brokers.kis import KISBroker
+        b = KISBroker(account=("63776023", "01"), paper=False)   # KR 시세용
+        wl = KR_WATCHLIST
+    else:
+        b = get_broker()
+        wl = DEFAULT_WATCHLIST
     candles = {}
-    for s in DEFAULT_WATCHLIST:
+    for s in wl:
         try:
             candles[s] = b.get_candles(s, "1d", 200)
         except Exception:  # noqa: BLE001
@@ -239,7 +247,7 @@ def screen(refresh: bool = False):
         "ret_1m": r.ret_1m, "ret_3m": r.ret_3m, "above_sma200": r.above_sma200,
         "trend_aligned": r.trend_aligned, "vol_20d": round(r.vol_20d, 2),
     } for r in results]
-    _cache_set("web:screen", out, 3600)
+    _cache_set(key, out, 3600)
     return out
 
 

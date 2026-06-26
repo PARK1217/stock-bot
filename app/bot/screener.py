@@ -272,3 +272,9 @@ DEFAULT_WATCHLIST = [
     "SCHD", "JEPI", "JEPQ", "QQQI", "SPYI", "QYLD", "DIVO", "O", "VYM",
     "SGOV", "BOXX", "GLDM", "VIG", "DGRO", "HDV", "SPHD", "NVDA", "AAPL",
 ]
+
+# KR 워치리스트 — 한투 보유 + 모의 KR 유니버스(국내상장 ETF). KIS 캔들.
+KR_WATCHLIST = [
+    "069500", "133690", "360750", "379800", "458730", "161510", "329200",
+    "210780", "484790", "273130", "122630", "233740",
+]

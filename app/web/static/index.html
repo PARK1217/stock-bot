@@ -189,6 +189,11 @@
     <div id="scn"><div class="empty">계산 중 (최초 ~30초)…</div></div>
   </div>
 
+  <div class="card" data-tab="watch">
+    <h2>📈 추세 스크리너 <span class="tag kr">KR</span> <span class="sub" id="scnkr-st">로딩…</span></h2>
+    <div id="scnkr"><div class="empty">계산 중 (최초 ~30초)…</div></div>
+  </div>
+
   <div class="card" data-tab="real">
     <h2>🎯 리밸런싱 제안</h2>
     <div id="prop"><div class="empty">—</div></div>
@@ -351,10 +356,11 @@ function heldSyms(){
   ((KIST.data&&KIST.data.positions)||[]).forEach(p=>s.add(p.symbol));
   return s;
 }
-function renderScreen(){
-  const d=window.SCN; if(!d)return;
+function renderScreen(){renderScreenInto(window.SCN,'scn'); renderScreenInto(window.SCNKR,'scnkr');}
+function renderScreenInto(d,elId){
+  if(!d)return; const el=document.getElementById(elId); if(!el)return;
   const mx=Math.max(...d.map(r=>r.score),1), held=heldSyms();
-  document.getElementById('scn').innerHTML=d.map(r=>{
+  el.innerHTML=d.map(r=>{
     const h=held.has(r.symbol);
     return `<div class="row"${h?' style="background:#1c1a14"':''}>
       <div class="row-l"><div class="row-t"><span class="sym">${r.symbol}</span>${nmTag(r.symbol)}
@@ -367,7 +373,12 @@ function renderScreen(){
 async function loadScreen(){
   const d=await j('/api/screen'); const st=document.getElementById('scn-st');
   if(!d){st.textContent='실패';return} st.textContent=d.length+'종';
-  window.SCN=d; renderScreen(); loadNews();
+  window.SCN=d; renderScreenInto(d,'scn'); loadNews();
+}
+async function loadScreenKr(){
+  const d=await j('/api/screen?market=kr'); const st=document.getElementById('scnkr-st');
+  if(!d){st.textContent='실패';return} st.textContent=d.length+'종';
+  window.SCNKR=d; renderScreenInto(d,'scnkr');
 }
 function gradeColor(g){return g==='양호'?'var(--up)':g==='보통'?'var(--warn)':g==='역상관'?'var(--down)':'var(--mut)';}
 function btInterp(d){
@@ -574,7 +585,7 @@ function showTab(t){
 }
 initChips(); renderChat();
 showTab((function(){try{return localStorage.getItem('sbtab')||'real'}catch(e){return 'real'}})());
-function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(0);loadScreen();loadBT();}
+function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(0);loadScreen();loadScreenKr();loadBT();}
 loadAll(); updateSessions();
 setInterval(updateSessions,30000);
 setInterval(pollQuotes,10000);
