@@ -103,7 +103,8 @@ def cmd_paper() -> None:
     if r.get("error"):
         log.info("모의매매 스킵: %s", r["error"])
         return
-    head = f"🧪 모의 자동매매 · 총 {r['total']:,.0f}원 · 목표 {', '.join(r['targets'])}"
+    head = (f"🧪 모의 자동매매 · 총 {r['total']:,.0f}원 ({r['market']})\n"
+            f"🛡️ 코어 {', '.join(r['core']) or '-'}  /  🚀 새틀 {', '.join(r['sat']) or '-'}")
     body = "\n".join(r["orders"]) if r["orders"] else "리밸런싱 변경 없음"
     notify(head + "\n" + body)
     print(head + "\n" + body)

@@ -117,6 +117,106 @@ def _spearman(xs: list[float], ys: list[float]) -> float | None:
     return cov / (vx * vy) if vx and vy else None
 
 
+def backtest_trend(candles: list[dict], ma: int = 20, fee: float = 0.001) -> dict:
+    """추세추종 타이밍 백테스트. 전일 종가>이평(ma)이면 보유, 아니면 현금.
+    추세추종 vs 그냥보유 — 수익·최대낙폭(MDD) 비교. (룩어헤드 방지: 전일 신호)"""
+    cl = [c["close"] for c in candles if c["close"] > 0]
+    if len(cl) < ma + 5:
+        return {}
+    pos = 0
+    eq = peak = 1.0
+    mdd = 0.0
+    bh = bh_peak = 1.0
+    bh_mdd = 0.0
+    sw = 0
+    for i in range(ma, len(cl)):
+        sma = sum(cl[i - ma:i]) / ma
+        sig = 1 if cl[i - 1] > sma else 0               # 전일 종가 기준
+        r = cl[i] / cl[i - 1] - 1
+        eq *= (1 + sig * r)
+        if sig != pos:
+            eq *= (1 - fee); sw += 1                     # 진입/청산 수수료
+        pos = sig
+        peak = max(peak, eq); mdd = max(mdd, (peak - eq) / peak)
+        bh *= (1 + r); bh_peak = max(bh_peak, bh); bh_mdd = max(bh_mdd, (bh_peak - bh) / bh_peak)
+    return {"ma": ma, "trend_ret": round((eq - 1) * 100, 1), "trend_mdd": round(mdd * 100, 1),
+            "bh_ret": round((bh - 1) * 100, 1), "bh_mdd": round(bh_mdd * 100, 1), "switches": sw}
+
+
+def backtest_breakout(candles: list[dict], k: float = 0.5, fee: float = 0.001) -> dict:
+    """변동성 돌파(데이트레이딩) 백테스트. 일봉 OHLC로 시뮬.
+    목표가=당일시가+k×전일(고-저). 당일고가≥목표가면 목표가 진입→종가 청산.
+    fee=왕복 수수료+세금 비율. buy&hold와 비교."""
+    rets, days = [], 0
+    for i in range(1, len(candles)):
+        p, c = candles[i - 1], candles[i]
+        rng = p["high"] - p["low"]
+        if rng <= 0 or c["open"] <= 0:
+            continue
+        days += 1
+        target = c["open"] + k * rng
+        if c["high"] >= target and target > 0:           # 돌파→진입
+            rets.append(c["close"] / target - 1 - fee)   # 종가청산 - 수수료
+    if not rets:
+        return {"trades": 0}
+    cum = 1.0
+    for r in rets:
+        cum *= (1 + r)
+    wins = sum(1 for r in rets if r > 0)
+    bh = (candles[-1]["close"] / candles[1]["open"] - 1) * 100 if len(candles) > 1 else 0
+    return {"days": days, "trades": len(rets),
+            "win_pct": round(wins / len(rets) * 100, 1),
+            "avg_ret": round(sum(rets) / len(rets) * 100, 3),
+            "cum_ret": round((cum - 1) * 100, 1),
+            "buyhold": round(bh, 1)}
+
+
+def backtest_strategy(candles_by_symbol: dict[str, list[dict]],
+                      k: int = 3, horizon: int = 21, min_hist: int = 60) -> dict:
+    """전략 백테스트. 매 리밸런싱(horizon일)마다 점수 상위k(모멘텀)·하위k(평균회귀)·
+    전체(벤치)를 동일가중 보유 → 다음 구간 수익. 누적·평균 수익 비교."""
+    closes = {s: [c["close"] for c in cs if c["close"] > 0]
+              for s, cs in candles_by_symbol.items()}
+    closes = {s: v for s, v in closes.items() if len(v) >= min_hist + horizon + 5}
+    if len(closes) < 2 * k:
+        return {"error": "종목/데이터 부족"}
+    minlen = min(len(v) for v in closes.values())
+    al = {s: v[-minlen:] for s, v in closes.items()}        # 끝 기준 정렬
+    top, bot, bench = [], [], []
+    t = min_hist
+    while t + horizon < minlen:
+        sc = {}
+        for s in al:
+            r = score_symbol(s, [{"close": c} for c in al[s][:t + 1]])
+            if r:
+                sc[s] = r.score
+        if len(sc) >= 2 * k:
+            ranked = sorted(sc, key=sc.get)
+            lo, hi = ranked[:k], ranked[-k:]
+            def rr(sym):
+                return al[sym][t + horizon] / al[sym][t] - 1
+            top.append(sum(rr(s) for s in hi) / k)
+            bot.append(sum(rr(s) for s in lo) / k)
+            bench.append(sum(rr(s) for s in sc) / len(sc))
+        t += horizon
+
+    def cum(rs):
+        c = 1.0
+        for r in rs:
+            c *= (1 + r)
+        return (c - 1) * 100
+
+    n = len(top)
+    if not n:
+        return {"error": "구간 부족"}
+    return {"periods": n, "horizon": horizon, "k": k,
+            "momentum_cum": round(cum(top), 1), "reversion_cum": round(cum(bot), 1),
+            "bench_cum": round(cum(bench), 1),
+            "momentum_avg": round(sum(top) / n * 100, 2),
+            "reversion_avg": round(sum(bot) / n * 100, 2),
+            "bench_avg": round(sum(bench) / n * 100, 2)}
+
+
 def backtest_score(candles_by_symbol: dict[str, list[dict]],
                    horizon: int = 21, min_hist: int = 60) -> dict:
     """점수 신뢰도 백테스트. 과거 각 시점 점수 vs 이후 horizon일 실제수익 대조.
