@@ -102,11 +102,19 @@ def health():
 
 
 @app.get("/api/portfolio")
-def portfolio(broker: str = Query(default="")):
-    ck = f"web:portfolio:{broker or 'def'}"
+def portfolio(broker: str = Query(default=""), who: str = Query(default="me")):
+    who = "spouse" if who == "spouse" else "me"
+    ck = f"web:portfolio:{who}"
     if (c := _cache_get(ck)):
         return c
-    b = get_broker(broker or None)
+    if who == "spouse":
+        from bot.brokers.toss import toss_spouse
+        b = toss_spouse()
+        if b is None:
+            return {"error": "남편 계좌 미설정", "positions": [], "cash": 0,
+                    "total_krw": 0, "fx": 1540, "broker": "toss"}
+    else:
+        b = get_broker(broker or None)
     fx = b.usdkrw()
     bal = b.get_balance()
     total_krw = bal.cash + sum(p.market_value_krw(fx) for p in bal.positions)
@@ -274,15 +282,21 @@ def exposure():
 
 
 @app.get("/api/quotes")
-def quotes(symbols: str = Query(default="")):
+def quotes(symbols: str = Query(default=""), who: str = Query(default="me")):
     """보유종목 현재가 일괄(1회 호출). 5초 캐시. 대시보드 라이브 갱신용."""
     syms = [s.strip() for s in symbols.split(",") if s.strip()]
     if not syms:
         return {}
-    key = "web:quotes:" + ",".join(sorted(syms))
+    who = "spouse" if who == "spouse" else "me"
+    key = f"web:quotes:{who}:" + ",".join(sorted(syms))
     if c := _cache_get(key):
         return c
-    out = get_broker().get_prices(syms)
+    if who == "spouse":
+        from bot.brokers.toss import toss_spouse
+        b = toss_spouse()
+        out = b.get_prices(syms) if b else {}
+    else:
+        out = get_broker().get_prices(syms)
     _cache_set(key, out, 5)
     return out
 
