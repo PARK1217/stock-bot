@@ -215,19 +215,22 @@ def cmd_news_warm(session: str = "") -> None:
         kis = None
 
     def _recent_rets(sym, mkt):
-        """최근 종가로 1일·5일(≈1주) 수익률(%) 반환. 실패 시 (None, None)."""
+        """최근 종가 → (1일%, 5일%, base1=전일종가, base5=5일전종가). 실패 시 None.
+        base1/base5는 실시간 현재가로 재계산하기 위한 고정 기준종가."""
         try:
             br = us_broker if mkt == "US" else kis
             if br is None:
-                return None, None
+                return None, None, None, None
             cl = [c["close"] for c in br.get_candles(sym, "1d", 12) if c["close"] > 0]
             if len(cl) < 2:
-                return None, None
-            r1 = (cl[-1] / cl[-2] - 1) * 100
-            r5 = (cl[-1] / cl[-6] - 1) * 100 if len(cl) >= 6 else None
-            return round(r1, 2), (round(r5, 2) if r5 is not None else None)
+                return None, None, None, None
+            b1, b5 = cl[-2], (cl[-6] if len(cl) >= 6 else None)
+            r1 = (cl[-1] / b1 - 1) * 100
+            r5 = (cl[-1] / b5 - 1) * 100 if b5 else None
+            return (round(r1, 2), (round(r5, 2) if r5 is not None else None),
+                    round(b1, 4), (round(b5, 4) if b5 else None))
         except Exception:  # noqa: BLE001
-            return None, None
+            return None, None, None, None
 
     n = 0
     with SessionLocal() as sess:
@@ -235,12 +238,13 @@ def cmd_news_warm(session: str = "") -> None:
             try:
                 ns = news.get_sentiment(sym, mkt)
                 pol = news.polarity(ns.score)
-                r1, r5 = _recent_rets(sym, mkt)
-                imp = news.issue_impact(pol, r5)
+                r1, r5, b1, b5 = _recent_rets(sym, mkt)
+                imp = news.issue_impact(pol, r1)        # 영향=당일 움직임 기준(실시간 갱신과 동일)
                 r.set(f"web:news:{sym}", json.dumps(
                     {"symbol": sym, "score": round(ns.score, 2), "polarity": pol,
                      "summary": ns.summary, "sources": ns.sources,
-                     "ret_1d": r1, "ret_5d": r5, "impact": imp}, ensure_ascii=False),
+                     "ret_1d": r1, "ret_5d": r5, "impact": imp,
+                     "base1": b1, "base5": b5}, ensure_ascii=False),
                     ex=5 * 3600)
                 if ns.sources > 0:             # 기사 있는 것만 히스토리 적재
                     sess.add(NewsIssue(

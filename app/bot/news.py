@@ -35,12 +35,13 @@ def polarity(score: float) -> str:
     return "중립"
 
 
-def issue_impact(pol: str, ret_5d: float | None) -> str:
-    """이슈 극성 vs 최근 1주 주가반응 → '실제 영향' 한눈 판정. 단일 출처.
-    반영=영향 있음(방향 일치), 역행/소화=다르게 움직임, 횡보/잠잠=영향 거의 없음."""
-    if ret_5d is None:
+def issue_impact(pol: str, ret: float | None) -> str:
+    """이슈 극성 vs 주가 움직임(%) → '실제 영향' 한눈 판정. 단일 출처(파이썬·JS 공통 규칙).
+    ret은 당일 변동률(실시간 현재가 기준 재계산) — 반영=영향 있음(방향 일치),
+    역행/소화=다르게 움직임, 횡보/잠잠=영향 거의 없음."""
+    if ret is None:
         return ""
-    up, down = ret_5d >= 1.0, ret_5d <= -1.0       # ±1% 미만은 횡보로 간주
+    up, down = ret >= 1.0, ret <= -1.0             # ±1% 미만은 횡보로 간주
     if pol == "긍정":
         return "반영(상승중)" if up else "역행(하락중)" if down else "아직잠잠"
     if pol == "부정":
