@@ -145,7 +145,8 @@ class KISBroker(BrokerAdapter):
             {"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": symbol},
         )
         resp.raise_for_status()
-        return float(resp.json()["output"]["stck_prpr"])
+        out = resp.json().get("output") or {}        # 에러/레이트리밋 응답 방어
+        return float(out.get("stck_prpr") or 0)
 
     def get_candles(self, symbol: str, interval: str = "1d",
                     count: int = 100) -> list[dict]:
@@ -216,6 +217,48 @@ class KISBroker(BrokerAdapter):
             total_eval=float(summary.get("tot_evlu_amt", 0)),
             positions=positions,
         )
+
+    def domestic_orders(self, start: str, end: str) -> list[dict]:
+        """국내 일별 주문·체결 내역(ISA·연금 등). inquire-daily-ccld
+        (모의 VTTC8001R / 실전 TTTC8001R). 최신순. start/end=YYYYMMDD."""
+        tr = "VTTC8001R" if self.paper else "TTTC8001R"
+        try:
+            resp = self._get(
+                "/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
+                self._headers(tr),
+                {"CANO": self.cano, "ACNT_PRDT_CD": self.prod,
+                 "INQR_STRT_DT": start, "INQR_END_DT": end, "SLL_BUY_DVSN_CD": "00",
+                 "INQR_DVSN": "00", "PDNO": "", "CCLD_DVSN": "00", "ORD_GNO_BRNO": "",
+                 "ODNO": "", "INQR_DVSN_3": "00", "INQR_DVSN_1": "",
+                 "CTX_AREA_FK100": "", "CTX_AREA_NK100": ""})
+            rows = resp.json().get("output1") or []
+        except Exception as e:  # noqa: BLE001
+            log.warning("KIS 국내 체결조회 실패: %s", e)
+            return []
+
+        def _ts(d8: str, t6: str) -> str:
+            if d8 and len(d8) == 8:
+                s = f"{d8[:4]}-{d8[4:6]}-{d8[6:8]}"
+                return f"{s} {t6[:2]}:{t6[2:4]}" if t6 and len(t6) >= 4 else s
+            return d8 or ""
+
+        out = []
+        for r in rows:
+            ordq = float(r.get("ord_qty") or 0)
+            ccld = float(r.get("tot_ccld_qty") or 0)
+            rmn = float(r.get("rmn_qty") or (ordq - ccld))
+            nm = r.get("sll_buy_dvsn_cd_name") or ""
+            out.append({
+                "symbol": r.get("pdno", ""), "name": r.get("prdt_name", ""),
+                "side": "SELL" if "매도" in nm else "BUY", "side_name": nm,
+                "qty": ordq, "filled": ccld, "remaining": rmn,
+                "price": float(r.get("avg_prvs") or r.get("ord_unpr") or 0),
+                "amount": float(r.get("tot_ccld_amt") or 0),
+                "pending": rmn > 0,
+                "at": _ts(r.get("ord_dt", ""), r.get("ord_tmd", "")),
+                "currency": "KRW",
+            })
+        return out
 
     # ---------- 해외(미국) ----------
     def get_overseas_balance(self) -> Balance:

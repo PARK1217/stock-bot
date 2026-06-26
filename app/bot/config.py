@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     toss_app_secret: str = ""    # CLIENT_SECRET
     toss_account_no: str = ""    # X-Tossinvest-Account 헤더용 계좌번호
     toss_allow_live: bool = False  # 토스 실거래 명시 동의 (모의 환경 없음)
+    # 남편(배우자) 토스 계좌 — 대시보드 '남편' 사용자탭용. 본인 명의 별도 앱키 필요.
+    toss_spouse_app_key: str = ""
+    toss_spouse_app_secret: str = ""
+    toss_spouse_account_no: str = ""
 
     # infra
     database_url: str = "postgresql+psycopg://stockbot:changeme@db:5432/stockbot"
@@ -37,6 +41,7 @@ class Settings(BaseSettings):
     # news / sentiment
     finnhub_api_key: str = ""     # 미국 종목 뉴스 (finnhub.io 무료)
     dart_api_key: str = ""        # 한국 전자공시 DART
+    tiingo_api_key: str = ""      # 백테스트용 장기 US 일봉(tiingo.com 무료, 분배조정=총수익)
     news_lookback_days: int = 7
     # 감성: FinBERT(점수) + Groq(관련성·요약) 하이브리드. 없으면 키워드 폴백.
     use_finbert: bool = True              # 로컬 FinBERT 사용(키 없을 때)

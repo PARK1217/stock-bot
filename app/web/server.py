@@ -53,7 +53,7 @@ const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'applica
 body:JSON.stringify({password:p})});
 if(r.ok)location.reload();else document.getElementById('e').textContent='비밀번호가 틀렸어요';}</script>
 </html>"""
-_AUTH_FREE = ("/api/login", "/api/health")
+_AUTH_FREE = ("/api/login", "/api/health", "/sw.js", "/assets/manifest.webmanifest")
 
 
 @app.middleware("http")
@@ -167,7 +167,7 @@ def kis_accounts():
     fx = TossBroker().usdkrw() or 1540.0
     accts = [("63776023", "01", "ISA", "KR"), ("63776023", "22", "연금", "KR"),
              ("63751874", "01", "소수점", "US")]
-    out = {"total": 0.0, "positions": [], "fx": fx}
+    out = {"total": 0.0, "cash_krw": 0.0, "positions": [], "fx": fx}
     for cano, prod, label, mk in accts:
         try:
             b = KISBroker(account=(cano, prod), paper=False)  # 실전
@@ -177,6 +177,7 @@ def kis_accounts():
             continue
         if mk == "KR":
             out["total"] += bal.total_eval
+            out["cash_krw"] += bal.cash            # 예수금(현금) 합산
         for p in bal.positions:
             vkrw = p.market_value * (fx if p.currency == "USD" else 1)
             if mk == "US":
@@ -499,6 +500,63 @@ def backtest_view():
     return {"status": "미실행", "hint": "python -m bot.main backtest"}
 
 
+@app.get("/api/glossary")
+def glossary_view():
+    """주린이용 용어 사전(term→쉬운 풀이). 대시보드 '쉬운 용어' 도움말이 사용."""
+    from bot.glossary import TERMS
+    return {"terms": TERMS}
+
+
+@app.get("/api/cash")
+def cash(who: str = "me"):
+    """실계좌 현금 잔고 — 원화·달러(토스 매수가능금액). 60초 캐시."""
+    ck = f"web:cash:{who}"
+    if (c := _cache_get(ck)):
+        return c
+    from bot.brokers.toss import TossBroker, toss_spouse
+    b = toss_spouse() if who == "spouse" else TossBroker()
+    out = b.cash_balances() if b else {"KRW": 0, "USD": 0}
+    _cache_set(ck, out, 60)
+    return out
+
+
+@app.get("/api/orders")
+def orders_view(who: str = "me", limit: int = 20):
+    """실계좌 주문/거래 내역(체결 완료분). 120초 캐시."""
+    ck = f"web:orders:{who}"
+    if (c := _cache_get(ck)):
+        return c
+    from bot.brokers.toss import TossBroker, toss_spouse
+    b = toss_spouse() if who == "spouse" else TossBroker()
+    out = {"orders": b.order_history(limit) if b else []}
+    _cache_set(ck, out, 120)
+    return out
+
+
+@app.get("/api/kis/orders")
+def kis_orders(limit: int = 40):
+    """한투 국내(ISA·연금) 주문·거래 내역. 최근 40일, 대기(미체결) 먼저. 180초 캐시."""
+    if (c := _cache_get("web:kisord")):
+        return c
+    from bot.brokers.kis import KISBroker
+    end = datetime.now()
+    s, e = (end - timedelta(days=40)).strftime("%Y%m%d"), end.strftime("%Y%m%d")
+    rows = []
+    for cano, prod, label in [("63776023", "01", "ISA"), ("63776023", "22", "연금")]:
+        try:
+            b = KISBroker(account=(cano, prod), paper=False)
+            for o in b.domestic_orders(s, e):
+                o["account"] = label
+                rows.append(o)
+        except Exception as ex:  # noqa: BLE001
+            log.warning("kis orders %s 실패: %s", label, ex)
+    rows.sort(key=lambda x: x.get("at", ""), reverse=True)    # 최신순
+    rows.sort(key=lambda x: 0 if x.get("pending") else 1)     # 대기 먼저(안정정렬)
+    out = {"orders": rows[:limit]}
+    _cache_set("web:kisord", out, 180)
+    return out
+
+
 @app.get("/api/paper/trades")
 def paper_trades(page: int = 0, size: int = 8):
     """모의 거래내역 — US=KIS 체결원장(ccnl), KR=OrderLog(모의 국내 체결조회 미지원).
@@ -562,6 +620,24 @@ def snapshots(limit: int = 60):
                 for x in reversed(rows)]
 
 
+@app.get("/api/assets")
+def assets(limit: int = 90):
+    """실계좌 자산 흐름 — 전체 + 계좌별(토스·ISA·연금) 시계열. 매일 장마감 기록."""
+    from bot.storage.models import AssetSnapshot
+    with SessionLocal() as s:
+        rows = list(reversed(
+            s.query(AssetSnapshot).order_by(AssetSnapshot.id.desc()).limit(limit).all()))
+    return {
+        "ts": [str(x.ts)[:10] for x in rows],
+        "series": {
+            "전체 자산": [round(x.total_krw) for x in rows],
+            "토스(미국)": [round(x.toss_krw) for x in rows],
+            "ISA": [round(x.isa_krw) for x in rows],
+            "연금": [round(x.pension_krw) for x in rows],
+        },
+    }
+
+
 def _chat_context(who: str = "me") -> str:
     """챗봇 근거 데이터 — 보유·스크리너·신뢰도·계좌제약. who=spouse면 남편 토스만."""
     L = []
@@ -607,7 +683,7 @@ def _chat_context(who: str = "me") -> str:
                 sg = json.loads(st)
                 rg = "위험회피(하락장 방어, 새틀 중단·코어 절반·현금↑)" if sg.get("regime") == "risk_off" else "정상(risk-on)"
                 L.append(f"[모의 자동매매 전략현황] 코어-새틀라이트+MA50 추세추종. "
-                         f"시장레짐={rg}. 코어(70%) {sg.get('core')}, 새틀(30%) {sg.get('sat')}. "
+                         f"시장레짐={rg}. 코어(약85%) {sg.get('core')}, 새틀(약15%) {sg.get('sat')}. "
                          f"MA50 추세 꺾인 종목은 매도·현금화. 점수추격/단타는 검증상 손해라 안 씀.")
         except Exception:  # noqa: BLE001
             pass
@@ -648,6 +724,10 @@ def chat(body: dict):
     prompt = (
         "너는 'stock-bot'의 한국어 투자 분석 어시스턴트다. 아래 [현재 데이터]만을 근거로 "
         "사용자의 실제 포트폴리오를 분석한다. 규칙:\n"
+        "0) [주린이 모드·최우선] 사용자는 투자 완전초보다. 어려운 용어(MDD·샤프·IC·정배열·"
+        "모멘텀·레버리지·리밸런싱·변동성·레짐 등)는 되도록 쓰지 말고, 꼭 필요하면 바로 옆 "
+        "괄호에 쉬운 말 풀이를 붙여라(예: '최대낙폭(한때 가장 많이 빠진 폭)'). 중학생도 "
+        "이해할 눈높이로, 비유와 '예: 100만원이면…' 숫자 예시를 곁들여 친절히 설명한다.\n"
         "1) 매수/매도 의견은 반드시 데이터 근거와 함께. 데이터에 없는 사실은 지어내지 말고 모른다고 한다.\n"
         "2) 스크리너 점수는 매수신호가 아님(신뢰도 참고). 계좌 매매제약을 꼭 반영.\n"
         "3) 단정/보장 금지. '참고이며 최종 결정과 책임은 본인'임을 의식하되 매 답변에 길게 면책 달지 말 것.\n"
@@ -670,3 +750,9 @@ if (_STATIC / "index.html").exists():
     @app.get("/")
     def index():
         return FileResponse(_STATIC / "index.html")
+
+
+@app.get("/sw.js")
+def service_worker():
+    """PWA 서비스워커 — 루트(/)에서 서빙해야 전체 앱 스코프를 제어할 수 있음."""
+    return FileResponse(_STATIC / "assets" / "sw.js", media_type="application/javascript")

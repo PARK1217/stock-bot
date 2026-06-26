@@ -21,11 +21,14 @@ def _is_domestic(info: dict) -> bool:
 
 
 def _is_leveraged(info: dict) -> bool:
+    """레버리지/인버스 여부 — 연금은 '1배 롱'만 허용. leverageFactor가 1.0이 아니면
+    전부 제외(인버스 -1.0, 레버리지 ±2.0 등). ⚠️abs()를 쓰면 인버스(-1)가
+    abs=1로 '비레버리지' 오판되어 연금에 잘못 허용됨 → abs 없이 비교."""
     lf = info.get("leverageFactor")
     if lf is None:
         return False
     try:
-        return abs(float(lf)) != 1.0
+        return float(lf) != 1.0
     except (TypeError, ValueError):
         return False
 

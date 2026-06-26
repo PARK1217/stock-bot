@@ -36,11 +36,17 @@ HOST = "https://openapi.tossinvest.com"
 class TossBroker(BrokerAdapter):
     name = "toss"
 
-    def __init__(self):
-        self.account_no = settings.toss_account_no
+    def __init__(self, app_key: str | None = None, app_secret: str | None = None,
+                 account_no: str | None = None, label: str = "me"):
+        # 인자 없으면 기존처럼 본인 계좌(settings.toss_*). 남편 계좌는 자격증명을
+        # 넘겨서 인스턴스화. label로 토큰 캐시 분리(계좌별 토큰 충돌 방지).
+        self._app_key = app_key or settings.toss_app_key
+        self._app_secret = app_secret or settings.toss_app_secret
+        self.account_no = account_no or settings.toss_account_no
+        self.label = label
         self._redis = redis.from_url(settings.redis_url)
         self._client = httpx.Client(base_url=HOST, timeout=15.0)
-        self._token_key = "toss:token"
+        self._token_key = f"toss:token:{label}"
         self._seq_key = f"toss:accseq:{self.account_no}"
 
     # ---------- auth ----------
@@ -49,7 +55,7 @@ class TossBroker(BrokerAdapter):
         if cached:
             return cached.decode()
         basic = base64.b64encode(
-            f"{settings.toss_app_key}:{settings.toss_app_secret}".encode()
+            f"{self._app_key}:{self._app_secret}".encode()
         ).decode()
         resp = self._client.post(
             "/oauth2/token",
@@ -198,7 +204,10 @@ class TossBroker(BrokerAdapter):
                 return None
         pl = result.get("profitLoss") or {}
         dpl = result.get("dailyProfitLoss") or {}
-        total = cash + sum(p.market_value for p in positions)
+        # ⚠️ cash=KRW, 포지션 market_value=보유통화(미국주는 USD) → 환산 없이 더하면
+        #    통화혼합으로 총평가 과소. 원화환산 후 합산.
+        fx = self.usdkrw() or 1540.0
+        total = cash + sum(p.market_value_krw(fx) for p in positions)
         return Balance(cash=cash, total_eval=total, positions=positions,
                        total_pnl_pct=_rate(pl.get("rate")),
                        daily_pnl_pct=_rate(dpl.get("rate")),
@@ -221,7 +230,9 @@ class TossBroker(BrokerAdapter):
             "timeInForce": "DAY",
         }
         if price is not None:
-            body["price"] = str(int(price))
+            # KR 원화는 정수, 미국 달러는 소수점(센트) 유지 — int()로 일괄절삭 금지.
+            body["price"] = (str(int(price)) if float(price).is_integer()
+                             else str(round(float(price), 2)))
 
         try:
             resp = self._client.post("/api/v1/orders",
@@ -236,3 +247,56 @@ class TossBroker(BrokerAdapter):
 
         return OrderResult(ok=True, order_id=str(data.get("orderId", "")),
                            message="ok", raw=data)
+
+    # ---------- 현금 / 내역 ----------
+    def cash_balances(self) -> dict:
+        """통화별 매수가능 현금. {'KRW': float, 'USD': float}."""
+        out = {"KRW": 0.0, "USD": 0.0}
+        for cur in ("KRW", "USD"):
+            try:
+                r = self._get("/api/v1/buying-power", {"currency": cur}, acc=True)
+                out[cur] = float(r.json().get("result", {}).get("cashBuyingPower") or 0)
+            except Exception as e:  # noqa: BLE001
+                log.warning("토스 %s 현금 조회 실패: %s", cur, e)
+        return out
+
+    def order_history(self, limit: int = 20) -> list[dict]:
+        """주문·거래 내역 — 대기(OPEN/미체결) + 체결(CLOSED) 전부. 대기 먼저, 각 최신순."""
+        pend, done = [], []
+        for st in ("OPEN", "CLOSED"):
+            try:
+                r = self._get("/api/v1/orders",
+                              {"status": st, "limit": min(limit, 100)}, acc=True)
+                rows = r.json().get("result", {}).get("orders", [])
+            except Exception as e:  # noqa: BLE001
+                log.warning("토스 주문내역(%s) 실패: %s", st, e)
+                continue
+            for o in rows:
+                ex = o.get("execution") or {}
+                pending = st == "OPEN"
+                rec = {
+                    "symbol": o.get("symbol", ""), "side": o.get("side", ""),
+                    "type": o.get("orderType", ""), "status": o.get("status", ""),
+                    "pending": pending,
+                    "qty": float(ex.get("filledQuantity") or o.get("quantity") or 0),
+                    "price": float(ex.get("averageFilledPrice") or o.get("price") or 0),
+                    "amount": float(ex.get("filledAmount") or o.get("orderAmount") or 0),
+                    "currency": o.get("currency", "USD"),
+                    "fee": float(ex.get("commission") or 0) + float(ex.get("tax") or 0),
+                    "at": (ex.get("filledAt") or o.get("orderedAt") or "")[:16].replace("T", " "),
+                }
+                (pend if pending else done).append(rec)
+        pend.sort(key=lambda x: x["at"], reverse=True)
+        done.sort(key=lambda x: x["at"], reverse=True)
+        return pend + done
+
+
+def toss_spouse() -> "TossBroker | None":
+    """남편(배우자) 토스 계좌 브로커. .env에 TOSS_SPOUSE_* 채워져야 동작.
+    대시보드 '남편' 사용자탭·제안·예측에서 이걸로 잔고/시세 조회."""
+    if not settings.toss_spouse_app_key:
+        return None
+    return TossBroker(app_key=settings.toss_spouse_app_key,
+                      app_secret=settings.toss_spouse_app_secret,
+                      account_no=settings.toss_spouse_account_no,
+                      label="spouse")

@@ -117,7 +117,14 @@ def cmd_propose() -> None:
     bal = broker.get_balance()
     prices = _gather_prices(broker, strategy, bal)
 
-    signals = risk.stop_loss_signals(bal)
+    held_candles = {}
+    if hasattr(broker, "get_candles"):
+        for p in bal.positions:
+            try:
+                held_candles[p.symbol] = broker.get_candles(p.symbol, "1d", 80)
+            except Exception:  # noqa: BLE001
+                pass
+    signals = risk.stop_loss_signals(bal, held_candles)   # 추세확인=분배침식 오발동 방지
     signals += strategy.generate(bal, prices, fx)
 
     with SessionLocal() as session:
@@ -126,7 +133,7 @@ def cmd_propose() -> None:
         approved = risk.filter(signals, bal, prices, today, fx)
         if not approved:
             log.info("제안할 신호 없음 (밴드 이내 또는 차단)")
-            notify("ℹ️ 리밸런싱 제안 없음 (현재 비중 목표 범위 내).")
+            notify("ℹ️ 오늘은 바꿀 거 없어요 — 지금 비중이 목표 범위 안이라 그대로 두면 돼요.")
             return
 
         lines = []
@@ -141,8 +148,9 @@ def cmd_propose() -> None:
                          f"({s.reason})")
         session.commit()
 
-    msg = ("🤖 리밸런싱 제안 ({}건)\n{}\n\n승인: `approve all` 또는 `approve <id>`"
-           "\n거절: `reject all`").format(len(lines), "\n".join(lines))
+    msg = ("🤖 오늘의 사고팔기 제안 ({}건) — 비중을 목표대로 맞추는 거예요\n{}\n\n"
+           "👍 승인: `approve all`(전부) 또는 `approve <번호>`(하나만)"
+           "\n👎 거절: `reject all`").format(len(lines), "\n".join(lines))
     notify(msg)
     print(msg)
 
@@ -166,9 +174,9 @@ def cmd_screen() -> None:
         print("  " + r.line())
     top = results[:5]
     if top:
-        msg = "🔎 추세 상위 종목\n" + "\n".join(
-            f"{i+1}. {r.symbol} (점수 {r.score:.0f}, 3M "
-            f"{('%+.1f%%' % r.ret_3m) if r.ret_3m is not None else 'n/a'})"
+        msg = "🔎 요즘 흐름 좋은 종목 (참고용, 사라는 신호는 아니에요)\n" + "\n".join(
+            f"{i+1}. {r.symbol} — 흐름점수 {r.score:.0f}점, 최근 3개월 "
+            f"{('%+.1f%%' % r.ret_3m) if r.ret_3m is not None else '자료없음'}"
             for i, r in enumerate(top))
         notify(msg)
 
@@ -237,9 +245,51 @@ def cmd_forecast(symbol: str = "") -> None:
             p50=fc.band["p50"], p10=fc.band["p10"], p90=fc.band["p90"],
             backtest_winrate=fc.backtest_winrate))
         session.commit()
-    notify(f"🔮 {symbol} {horizon}일 전망: 상승확률 {fc.prob_up*100:.0f}%, "
-           f"기대 {fc.exp_return:+.1f}%, +5%도달 {fc.target_touch['+5%']*100:.0f}% "
-           f"(신호적중 {('%.0f%%'%(fc.backtest_winrate*100)) if fc.backtest_winrate else 'n/a'})")
+    wr = fc.backtest_winrate
+    notify(f"🔮 {symbol} — 앞으로 {horizon}일 전망 (AI 추정치, 단정 아니에요)\n"
+           f"   📈 오를 가능성 약 {fc.prob_up*100:.0f}%\n"
+           f"   🎯 기대 수익 {fc.exp_return:+.1f}% 정도\n"
+           f"   🚀 {horizon}일 안에 +5% 찍을 확률 {fc.target_touch['+5%']*100:.0f}%\n"
+           f"   📚 과거 비슷한 신호가 맞았던 비율 "
+           f"{('%.0f%%' % (wr*100)) if wr else '자료부족'}")
+
+
+def cmd_forecast_all() -> None:
+    """워치리스트 전체 예측 생성·DB기록 (스케줄용). cmd_forecast의 일괄판."""
+    from bot import news
+    from bot.forecast import forecast_symbol
+    from bot.screener import DEFAULT_WATCHLIST
+    from bot.storage.models import Prediction
+    broker, _, _ = _build()
+    if not hasattr(broker, "get_candles"):
+        log.warning("%s 어댑터 캔들 미지원 → 예측 생략", broker.name)
+        return
+    made = 0
+    with SessionLocal() as session:
+        for symbol in DEFAULT_WATCHLIST:
+            try:
+                closes = [c["close"] for c in broker.get_candles(symbol, "1d", 200)
+                          if c["close"] > 0]
+                if len(closes) < 30:
+                    continue
+                fc = forecast_symbol(symbol, closes, 21,
+                                     technical_tilt=_technical_tilt(closes),
+                                     news_sentiment=news.tilt(symbol))
+                if fc is None:
+                    continue
+                session.add(Prediction(
+                    symbol=symbol, horizon_days=21, base_price=fc.last,
+                    prob_up=fc.prob_up, exp_return=fc.exp_return,
+                    p50=fc.band["p50"], p10=fc.band["p10"], p90=fc.band["p90"],
+                    backtest_winrate=fc.backtest_winrate))
+                made += 1
+            except Exception as e:  # noqa: BLE001
+                log.warning("%s 예측 실패: %s", symbol, e)
+        session.commit()
+    log.info("예측 생성 %d건", made)
+    if made:
+        notify(f"🔮 오늘의 종목별 전망 {made}개 업데이트했어요 "
+               f"(약 한 달 뒤 가격 흐름 추정 — 대시보드에서 확인!)")
 
 
 def cmd_accuracy() -> None:
@@ -331,29 +381,236 @@ def cmd_reject(arg: str = "all") -> None:
 
 # ---------- 스냅샷/스케줄러 ----------
 def cmd_snapshot() -> None:
-    broker, _, _ = _build()
-    fx = broker.usdkrw()
-    bal = broker.get_balance()
-    total_krw = bal.cash + sum(p.market_value_krw(fx) for p in bal.positions)
+    """일일 자산 스냅샷 — 토스 + 한투 계좌별 평가액을 기록(자산 흐름 그래프용)."""
+    from bot.brokers.toss import TossBroker
+    from bot.brokers.kis import KISBroker
+    from bot.storage.models import AssetSnapshot
+    toss = TossBroker()
+    fx = toss.usdkrw() or 1540.0
+    tb = toss.get_balance()
+    toss_krw = tb.cash + sum(p.market_value_krw(fx) for p in tb.positions)
+
+    isa = pension = frac = 0.0                       # 한투 계좌별 평가액
+    for cano, prod, label, mk in [("63776023", "01", "ISA", "KR"),
+                                  ("63776023", "22", "연금", "KR"),
+                                  ("63751874", "01", "소수점", "US")]:
+        try:
+            b = KISBroker(account=(cano, prod), paper=False)
+            bal = b.get_overseas_balance() if mk == "US" else b.get_balance()
+            v = (bal.total_eval if mk == "KR"
+                 else sum(p.market_value * fx for p in bal.positions))
+            if label == "ISA":
+                isa = v
+            elif label == "연금":
+                pension = v
+            else:
+                frac = v
+        except Exception as e:  # noqa: BLE001
+            log.warning("snapshot KIS %s 실패: %s", label, e)
+    kis_krw = isa + pension + frac
+    total = toss_krw + kis_krw
+
     with SessionLocal() as session:
-        session.add(DailySnapshot(cash=bal.cash, total_eval=total_krw))
+        session.add(DailySnapshot(cash=tb.cash, total_eval=toss_krw))   # 기존(토스) 유지
+        session.add(AssetSnapshot(total_krw=total, toss_krw=toss_krw, kis_krw=kis_krw,
+                                  isa_krw=isa, pension_krw=pension))
         session.commit()
-    notify(f"📊 일일 스냅샷 현금 {bal.cash:,.0f} / 총평가(원화) {total_krw:,.0f}")
+    notify(f"💼 오늘 자산 요약 — 전체 {total:,.0f}원 (토스 {toss_krw:,.0f} + 한투 {kis_krw:,.0f})")
+
+
+def _plain_backtest_msg(port: dict) -> str:
+    """백테스트 숫자(MDD·샤프 등)를 주린이용 한글 안내로 풀어쓴다."""
+    st, sp, sc = port.get("strategy") or {}, port.get("SPY") or {}, port.get("SCHD") or {}
+    tot, mdd, shp = st.get("total"), st.get("mdd"), st.get("sharpe")
+    if tot is None or shp is None:
+        return "📊 전략 성적표: 이번엔 데이터가 부족해 계산을 건너뛰었어요. 다음에 다시 알려드릴게요."
+    yrs = round((port.get("periods") or 0) / 252) or "수"
+    grew = round(100 * (1 + tot / 100))
+    L = [f"📊 우리 전략 성적표 — 지난 약 {yrs}년치로 모의실험 (실제 거래 아니에요)",
+         "",
+         "🤖 우리 전략이라면",
+         f"   💰 {tot}% 불었어요  (100만원 넣었으면 약 {grew}만원)",
+         f"   📉 가장 나빴을 땐 {mdd}%까지 빠졌다 회복  (= 견뎌야 할 최대 출렁임)",
+         f"   ⚖️ 효율점수 {shp}점  (위험 대비 잘 번 정도 — 높을수록 좋고 1 넘으면 우수)",
+         "",
+         "📌 그냥 사두기만 했다면 (비교용)",
+         f"   · 미국 대표지수 SPY : {sp.get('total')}% / 최악 {sp.get('mdd')}%",
+         f"   · 배당주 모음 SCHD : {sc.get('total')}% / 최악 {sc.get('mdd')}%"]
+    bits = []
+    spm, spt = sp.get("mdd"), sp.get("total")
+    if spm is not None and mdd is not None and mdd > spm:
+        bits.append(f"폭락장에서 덜 빠졌어요({mdd}% vs 지수 {spm}%)")
+    if spt is not None and tot is not None and tot < spt:
+        bits.append(f"대신 수익은 지수보다 적어요({tot}% vs {spt}%)")
+    L += ["", f"👉 한줄평: {' · '.join(bits) if bits else '지수와 비슷한 흐름이에요'}.",
+          "   '많이 벌기'보다 '폭락 때 덜 잃기'에 무게 둔 안정형 전략이에요."]
+    return "\n".join(L)
+
+
+def cmd_backtest() -> None:
+    """전략 백테스트 실행 — 코어+새틀 유니버스로 점수 모멘텀/평균회귀/벤치(+유의성 t값),
+    돌파전략 fee 민감도. 결과 출력·디스코드 통지·redis 저장(대시보드 /api/backtest)."""
+    import json as _json
+    from bot.brokers.kis import KISBroker
+    from bot.brokers.toss import TossBroker
+    from bot.papertrader import CORE_KR, CORE_US, SAT_KR, SAT_US, _redis
+    from bot.screener import backtest_strategy, backtest_breakout, backtest_portfolio
+    kis, toss = KISBroker(paper=True), TossBroker()
+    candles: dict[str, list[dict]] = {}
+    for sym in CORE_KR + SAT_KR:
+        try:
+            candles[sym] = kis.get_candles(sym, "1d", 200)
+        except Exception as e:  # noqa: BLE001
+            log.warning("%s KR캔들 실패: %s", sym, e)
+    # US: Tiingo 장기 일봉(다레짐, 분배조정=총수익) 우선, 없으면 토스 200봉 폴백.
+    from bot.histdata import tiingo_candles
+    for sym in CORE_US + SAT_US + ["SPY"]:                # SPY=레짐/벤치, SCHD는 코어에 포함
+        cs = tiingo_candles(sym, start="2018-01-01")
+        if not cs:
+            try:
+                cs = toss.get_candles(sym, "1d", 200)
+            except Exception as e:  # noqa: BLE001
+                log.warning("%s US캔들 실패: %s", sym, e)
+                continue
+        candles[sym] = cs
+    src = "Tiingo다년치" if settings.tiingo_api_key else "토스200봉"
+    print(f"[데이터소스] US={src}, 캔들 보유 {len(candles)}종목")
+    # 가드: 장기데이터(>=1800봉) 4종목 미만이면 Tiingo 429/미설정 → 스킵(기존 결과 보존).
+    if sum(1 for v in candles.values() if len(v) >= 1800) < 4:
+        log.warning("장기데이터 부족(Tiingo 429/미설정?) → 백테스트 스킵, 기존 redis 결과 유지")
+        notify("⚠️ 성적표 계산을 잠시 미뤘어요 (데이터 서버 일시 한도). 곧 다시 시도할게요.")
+        return
+
+    # ① 점수 백테스트(풀사이클: min_bars=1800으로 2018~ 장기종목만 → 다레짐 209구간)
+    strat = backtest_strategy(candles, horizon=10, min_hist=40, min_bars=1800)
+    print("[점수 백테스트] 상위(모멘텀) vs 하위(평균회귀) vs 벤치 — "
+          f"n={strat.get('periods')} 종목={strat.get('included')} minlen={strat.get('minlen')}")
+    print(f"  {strat}")
+
+    # ② 실제 전략 포트폴리오 백테스트(MA50+코어/새틀+레짐) vs SPY/SCHD.
+    #   다레짐(2020·2022) 포함 위해 장기이력(>=1500봉) 종목만 — 신생ETF가 끼면
+    #   align-to-min으로 윈도우가 2024로 잘려 폭락장을 못 봄. core_w는 라이브와 일치.
+    from bot.papertrader import CORE_W
+    long_core = [s for s in CORE_US if len(candles.get(s, [])) >= 1800]
+    long_sat = [s for s in SAT_US if len(candles.get(s, [])) >= 1800]
+    port = backtest_portfolio(candles, long_core, long_sat,
+                              bench=("SPY", "SCHD"), core_w=CORE_W)
+    print(f"[전략 포트폴리오] MA50+코어/새틀+레짐 vs buy&hold (다레짐, core={long_core} "
+          f"sat={long_sat} core_w={CORE_W})")
+    print(f"  {port}")
+    # A/B: 레짐 오버레이 끈 'MA50만' 변형 병행(라이브 미적용, 비교관찰용). 주간 누적 로그.
+    port_ma = backtest_portfolio(candles, long_core, long_sat, bench=("SPY", "SCHD"),
+                                 core_w=CORE_W, use_regime=False)
+    print(f"[A/B 레짐] 풀전략 {port.get('strategy')} | MA만 {port_ma.get('strategy')}")
+    abrec = {"ts": str(datetime.now())[:10],
+             "full": port.get("strategy"), "ma_only": port_ma.get("strategy")}
+    try:
+        _redis.rpush("backtest:ab_log", _json.dumps(abrec))
+        _redis.ltrim("backtest:ab_log", -52, -1)        # 최근 52주만
+    except Exception:  # noqa: BLE001
+        pass
+
+    fees = [0.0005, 0.001, 0.002, 0.003]      # 5/10/20/30bp 왕복비용
+    brk: dict[str, dict] = {}
+    for sym, cs in candles.items():
+        row = {f"{int(fee*1e4)}bp": backtest_breakout(cs, fee=fee).get("cum_ret")
+               for fee in fees}
+        base = backtest_breakout(cs, fee=0.0)
+        row["buyhold"] = base.get("buyhold")
+        row["trades"] = base.get("trades")
+        brk[sym] = row
+    print("[돌파 fee 민감도] 종목별 돌파누적(%) by fee  vs  buyhold(%)")
+    for sym, row in brk.items():
+        print(f"  {sym:<8} {row}")
+
+    _redis.set("backtest:strategy",
+               _json.dumps({"strategy": strat, "portfolio": port,
+                            "portfolio_ma_only": port_ma, "breakout": brk,
+                            "ts": str(datetime.now())[:16]}), ex=604800)
+    notify(_plain_backtest_msg(port))
+
+
+# 스케줄 정의 — (이름, 함수, 요일(cron), [(시,분)...]). add_job·catch-up이 공유.
+_DOW = {"mon-fri": {0, 1, 2, 3, 4}, "tue-sat": {1, 2, 3, 4, 5}, "mon": {0}}
+_SCHEDULE = [
+    ("screen", lambda: cmd_screen(), "mon-fri", [(9, 10)]),
+    ("propose", lambda: cmd_propose(), "mon-fri", [(10, 0)]),
+    ("news_warm", lambda: cmd_news_warm(), "mon-fri", [(9, 20), (23, 45)]),
+    ("snapshot_kr", lambda: cmd_snapshot(), "mon-fri", [(15, 40)]),   # KR 마감
+    ("snapshot_us", lambda: cmd_snapshot(), "tue-sat", [(6, 10)]),    # US 마감(익일 새벽)
+    ("forecast_all", lambda: cmd_forecast_all(), "mon-fri", [(9, 30)]),
+    ("accuracy", lambda: cmd_accuracy(), "mon-fri", [(16, 0)]),
+    ("backtest", lambda: cmd_backtest(), "mon", [(8, 0)]),
+    ("paper", lambda: cmd_paper(), "mon-fri", [(9, 15), (12, 30), (15, 0), (23, 35)]),
+]
+
+
+def _sched_redis():
+    import redis
+    return redis.from_url(settings.redis_url)
+
+
+def _tracked(fn, name):
+    """잡 실행 래퍼 — 끝나면 마지막 실행시각을 redis 기록(재시작 catch-up 판단용)."""
+    def wrapped():
+        try:
+            fn()
+        finally:
+            try:
+                _sched_redis().set(f"sched:lastrun:{name}",
+                                   datetime.now().strftime("%Y%m%d%H%M"))
+            except Exception:  # noqa: BLE001
+                pass
+    wrapped.__name__ = f"job_{name}"
+    return wrapped
+
+
+def _catchup() -> None:
+    """봇 재시작 시 오늘 이미 지난 스케줄인데 그 이후 실행기록 없는 잡을 1회 보정 실행.
+    최초 기동(기준키 없음)은 건너뜀=폭주 방지. paper는 시장게이팅으로 안전."""
+    try:
+        r = _sched_redis()
+    except Exception:  # noqa: BLE001
+        return
+    now = datetime.now()
+    nowmin = now.hour * 60 + now.minute
+    for name, fn, dow, times in _SCHEDULE:
+        if now.weekday() not in _DOW.get(dow, set()):
+            continue
+        past = [(h, m) for (h, m) in times if h * 60 + m <= nowmin]
+        if not past:
+            continue
+        h, m = max(past, key=lambda t: t[0] * 60 + t[1])      # 오늘 지난 것 중 최신
+        fire = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        try:
+            last = r.get(f"sched:lastrun:{name}")
+        except Exception:  # noqa: BLE001
+            last = None
+        if not last:                                          # 기준 없음 → 보정 안 함
+            continue
+        try:
+            last_dt = datetime.strptime(last.decode(), "%Y%m%d%H%M")
+        except (ValueError, AttributeError):
+            continue
+        if last_dt < fire:                                    # 최신 예정 이후 실행기록 없음=놓침
+            log.info("⏱ catch-up: %s (놓친 %02d:%02d 보정)", name, h, m)
+            try:
+                fn()
+                r.set(f"sched:lastrun:{name}", now.strftime("%Y%m%d%H%M"))
+            except Exception as e:  # noqa: BLE001
+                log.warning("catch-up %s 실패: %s", name, e)
 
 
 def cmd_run() -> None:
     init_db()
-    sched = BlockingScheduler(timezone="Asia/Seoul")
-    # 반자동: 정해진 시각에 '제안'만 생성(자동 주문 X). 평일 10:00
-    sched.add_job(cmd_propose, "cron", day_of_week="mon-fri", hour=10, minute=0)
-    sched.add_job(cmd_screen, "cron", day_of_week="mon-fri", hour=9, minute=10)
-    sched.add_job(cmd_news_warm, "cron", day_of_week="mon-fri", hour=9, minute=20)
-    sched.add_job(cmd_news_warm, "cron", day_of_week="mon-fri", hour=23, minute=45)
-    sched.add_job(cmd_snapshot, "cron", day_of_week="mon-fri", hour=15, minute=40)
-    # 모의 자동매매(KR+US 통합). KR장 3회(09:15·12:30·15:00, 시장가 즉시체결).
-    # US장 1회(23:35, 모의 미국 체결지연으로 중복주문 방지 위해 하루 1회).
-    for h, m in [(9, 15), (12, 30), (15, 0), (23, 35)]:
-        sched.add_job(cmd_paper, "cron", day_of_week="mon-fri", hour=h, minute=m)
+    # misfire_grace_time=실행 시각 지나도 1h 내면 실행, coalesce=밀린 건 1회로 합침.
+    sched = BlockingScheduler(timezone="Asia/Seoul",
+                              job_defaults={"misfire_grace_time": 3600, "coalesce": True})
+    for name, fn, dow, times in _SCHEDULE:
+        for h, m in times:
+            sched.add_job(_tracked(fn, name), "cron", day_of_week=dow, hour=h, minute=m,
+                          id=f"{name}_{h:02d}{m:02d}", replace_existing=True)
+    _catchup()                                  # 재시작 중 놓친 오늘 잡 따라잡기
     notify(f"🤖 stock-bot 스케줄러 시작 (반자동, {broker_label()})")
     log.info("scheduler started")
     sched.start()
@@ -371,6 +628,8 @@ COMMANDS = {
     "screen": cmd_screen,
     "news": cmd_news_warm,
     "accuracy": cmd_accuracy,
+    "forecast-all": cmd_forecast_all,
+    "backtest": cmd_backtest,
     "pending": cmd_pending,
     "snapshot": cmd_snapshot,
     "run": cmd_run,

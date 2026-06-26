@@ -3,7 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>stock-bot</title>
+<title>스탁봇</title>
+<!-- PWA: 홈 화면에 앱으로 설치 -->
+<link rel="manifest" href="/assets/manifest.webmanifest">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="스탁봇">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/assets/icon-192.png">
+<script>if('serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}))}</script>
 <style>
   :root{--bg:#0f1115;--card:#1a1d24;--line:#2a2f3a;--fg:#e6e9ef;--mut:#8b93a3;
         --up:#27c281;--down:#ff5c6c;--accent:#4c8dff;--warn:#ffb454;--gold:#e0b257;}
@@ -159,8 +168,28 @@
   </div>
 
   <div class="card span2" data-tab="real" data-me="1">
+    <h2>📈 자산 흐름 <span class="mut" style="font-weight:400;font-size:11.5px">전체 + 계좌별 추이</span></h2>
+    <div id="assets"><div class="empty">불러오는 중…</div></div>
+  </div>
+
+  <div class="card span2" data-tab="real">
+    <h2>💰 현금 잔고 <span class="mut" style="font-weight:400;font-size:11.5px">바로 살 수 있는 돈</span></h2>
+    <div id="cash"><div class="empty">불러오는 중…</div></div>
+  </div>
+
+  <div class="card span2" data-tab="real">
+    <h2>📋 주문·거래 내역 <span class="mut" style="font-weight:400;font-size:11.5px">대기(미체결) + 체결 기록</span></h2>
+    <div id="orders"><div class="empty">불러오는 중…</div></div>
+  </div>
+
+  <div class="card span2" data-tab="real" data-me="1">
     <h2>🏦 한투 실계좌 <span class="sub" id="kis-st"></span></h2>
     <div id="kis"><div class="empty">불러오는 중…</div></div>
+  </div>
+
+  <div class="card span2" data-tab="real" data-me="1">
+    <h2>📋 한투 주문·거래 내역 <span class="mut" style="font-weight:400;font-size:11.5px">ISA·연금 · 최근 40일</span></h2>
+    <div id="kisorders"><div class="empty">불러오는 중…</div></div>
   </div>
 
   <div class="card span2" data-tab="real" data-me="1">
@@ -239,12 +268,12 @@
 
 <script>
 // ---------- 공통 유틸 ----------
-const won=n=>n==null?'—':Math.round(n).toLocaleString()+'₩';
+const won=n=>n==null?'—':'₩'+Math.round(n).toLocaleString();
 let CUR='KRW';
 function toggleCur(){CUR=CUR==='KRW'?'USD':'KRW';document.getElementById('curtgl').textContent=CUR==='KRW'?'₩':'$';
   updateHeader();renderPortfolio();renderKis();renderPaper();renderTrades();loadExpo();}
-function amt(krw){if(krw==null)return'';return CUR==='KRW'?Math.round(krw).toLocaleString()+'원':'$'+Math.round(krw/(ST.fx||1540)).toLocaleString();}
-function samt(krw){if(krw==null)return'';return (krw>=0?'+':'')+amt(krw);}
+function amt(krw){if(krw==null)return'';return CUR==='KRW'?'₩'+Math.round(krw).toLocaleString():'$'+Math.round(krw/(ST.fx||1540)).toLocaleString();}
+function samt(krw){if(krw==null)return'';return (krw<0?'-':'+')+amt(Math.abs(krw));}
 function pnlAmt(vk,pp){return (vk==null||pp==null)?null:vk-vk/(1+pp/100);}  // 평가손익 금액
 const pct=n=>n==null?'—':(n>=0?'+':'')+n.toFixed(2)+'%';
 const cls=n=>n==null?'':n>=0?'up':'down';
@@ -273,6 +302,16 @@ function sparkline(hist){
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:44px;display:block">
     <line x1="0" y1="${y(SEED)}" x2="${W}" y2="${y(SEED)}" stroke="var(--mut)" stroke-dasharray="3 3" stroke-width="0.6" opacity="0.5"/>
     <polyline points="${pt}" fill="none" stroke="${col}" stroke-width="1.6"/></svg>`;
+}
+// 실계좌용 자동스케일 sparkline(기준선 없음). big=큰 차트.
+function spark2(v,big){
+  v=(v||[]).filter(x=>x!=null); if(v.length<2)return '<div class="mut" style="font-size:11px;margin-top:3px">기록 쌓이는 중…</div>';
+  const mn=Math.min(...v),mx=Math.max(...v),rng=(mx-mn)||1,W=300,H=big?54:30,n=v.length;
+  const y=x=>(H-2-(x-mn)/rng*(H-4)).toFixed(1);
+  const pt=v.map((x,i)=>`${(i/(n-1)*W).toFixed(1)},${y(x)}`).join(' ');
+  const col=v[v.length-1]>=v[0]?'var(--up)':'var(--down)';
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:${H}px;display:block;margin-top:3px">
+    <polyline points="${pt}" fill="none" stroke="${col}" stroke-width="1.7"/></svg>`;
 }
 function toggleHelp(id){const e=document.getElementById(id);if(e)e.style.display=e.style.display==='none'?'block':'none';}
 
@@ -327,7 +366,7 @@ function posRow(p,mk){
   const vk=mk==='US'?vkrw(p):p.value_krw, pa=pnlAmt(vk,p.pnl_pct);
   return `<div class="row" data-sym="${p.symbol}">
     <div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span> <span class="nm">${esc(p.name||'')}</span></div>
-      <div class="row-s num">${nf(p.qty,4)}주 · ${nf(p.price)}${p.currency==='USD'?'$':'₩'}</div></div>
+      <div class="row-s num">${nf(p.qty,4)}주 · ${p.currency==='USD'?'$':'₩'}${nf(p.price)}</div></div>
     <div class="row-r"><div class="v ${cls(p.pnl_pct)} num">${pct(p.pnl_pct)}</div>
       <div class="v2 ${cls(p.pnl_pct)} num">${samt(pa)}</div>
       <div class="v2 mut num">${amt(vk)}</div></div></div>`;
@@ -506,7 +545,7 @@ function renderPaper(){
     const bk=BKT[p.bucket]; const bt=bk?`<span class="tag" style="background:${bk[1]};color:${bk[2]}">${bk[0]}</span> `:'';
     return `<div class="row"><div class="row-l"><div class="row-t">${mkt(p.market)} ${bt}<span class="sym">${p.symbol}</span>
        <span class="nm">${esc(p.name||'')}</span></div>
-       <div class="row-s num">${nf(p.qty,2)}주 · ${nf(p.price)}${p.market==='US'?'$':'₩'}</div></div>
+       <div class="row-s num">${nf(p.qty,2)}주 · ${p.market==='US'?'$':'₩'}${nf(p.price)}</div></div>
      <div class="row-r"><div class="v ${cls(p.pnl_pct)} num">${pct(p.pnl_pct)}</div>
        <div class="v2 ${cls(p.pnl_pct)} num">${samt(pnlAmt(p.value_krw,p.pnl_pct))}</div>
        <div class="v2 mut num">${amt(p.value_krw)}</div></div></div>`;}).join('')
@@ -531,7 +570,7 @@ function renderTrades(){
     const ts=t.ts;
     const buy=t.side==='buy';
     const qd=(t.filled!=null&&+t.filled!==+t.qty)?`${nf(t.filled,2)}/${nf(t.qty,2)}`:nf(t.qty,2);
-    const fp=t.fill_price!=null?` @${nf(t.fill_price)}${t.market==='US'?'$':''}`:'';
+    const fp=t.fill_price!=null?` @${t.market==='US'?'$':'₩'}${nf(t.fill_price)}`:'';
     const amtv=t.amount_krw!=null?amt(t.amount_krw):'<span class="mut">—</span>';
     return `<div class="row"><div class="row-l"><div class="row-t">
         <span class="tag ${buy?'buy':'sell'}">${buy?'매수':'매도'}</span> ${mkt(t.market)} <span class="sym">${t.symbol}</span>${nmTag(t.symbol)}</div>
@@ -557,6 +596,7 @@ async function loadKis(){
 function renderKis(){
   const d=KIST.data; if(!d)return;
   document.getElementById('kis-st').innerHTML='총 '+amt(d.total)+
+    (d.cash_krw!=null?` · 💰현금 ${amt(d.cash_krw)}`:'')+
     (d.total_pnl_pct!=null?`<span class="seg ${cls(d.total_pnl_pct)}">전체 ${pct(d.total_pnl_pct)}${d.total_pnl_amt_krw!=null?' ('+samt(d.total_pnl_amt_krw)+')':''}</span>`:'')+
     (d.daily_pnl_amt_krw!=null?`<span class="seg ${cls(d.daily_pnl_pct)}">오늘 ${pct(d.daily_pnl_pct)} (${samt(d.daily_pnl_amt_krw)})</span>`:'');
   const groups={}; (d.positions||[]).forEach(p=>{(groups[p.account]=groups[p.account]||[]).push(p)});
@@ -571,7 +611,7 @@ function renderKis(){
     ps.sort((a,b)=>b.value_krw-a.value_krw).forEach(p=>{
       html+=`<div class="row sub-row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>
           <span class="nm">${esc(p.name||'')}</span></div>
-          <div class="row-s num">${nf(p.qty,2)}주 · ${nf(p.price)}${p.currency==='USD'?'$':'₩'}</div></div>
+          <div class="row-s num">${nf(p.qty,2)}주 · ${p.currency==='USD'?'$':'₩'}${nf(p.price)}</div></div>
         <div class="row-r"><div class="v ${cls(p.pnl_pct)} num">${pct(p.pnl_pct)}</div>
           <div class="v2 ${cls(p.pnl_pct)} num">${samt(pnlAmt(p.value_krw,p.pnl_pct))}</div>
           <div class="v2 mut num">${amt(p.value_krw)}</div></div></div>`;});
@@ -633,9 +673,73 @@ function showTab(t){
 }
 initChips(); renderChat();
 showTab((function(){try{return localStorage.getItem('sbtab')||'real'}catch(e){return 'real'}})());
+// ---------- 현금 / 거래내역 (실계좌) ----------
+async function loadCash(){
+  const d=await j('/api/cash?who='+WHO); if(!d)return;
+  const krw=Math.round(d.KRW||0), usd=d.USD||0;
+  document.getElementById('cash').innerHTML=
+    `<div style="display:flex;gap:28px;flex-wrap:wrap;padding:4px 2px">
+      <div><div class="mut" style="font-size:12px">원화 💵</div>
+        <div class="num" style="font-size:21px;font-weight:700">₩${krw.toLocaleString()}</div></div>
+      <div><div class="mut" style="font-size:12px">달러 💲</div>
+        <div class="num" style="font-size:21px;font-weight:700">$${usd.toFixed(2)}</div></div>
+    </div>`;
+}
+async function loadOrders(){
+  const d=await j('/api/orders?who='+WHO); if(!d)return;
+  const os=d.orders||[]; const el=document.getElementById('orders');
+  if(!os.length){el.innerHTML='<div class="empty">아직 거래 기록이 없어요</div>';return;}
+  el.innerHTML=os.map(o=>{
+    const buy=o.side==='BUY'; const cur=o.currency==='USD'?'$':'₩';
+    const wait=o.pending?'<span class="tag" style="background:#3a3417;color:#ffd454">⏳대기</span> ':'';
+    const fee=o.fee?` · 수수료 ${cur}${nf(o.fee,2)}`:'';
+    const detail=o.pending
+      ? `${o.at} · ${nf(o.qty,4)}주 주문${o.price?` @${cur}${nf(o.price,2)}`:' (시장가)'}`
+      : `${o.at} · ${nf(o.qty,4)}주 @${cur}${nf(o.price,2)}${fee}`;
+    return `<div class="row"><div class="row-l"><div class="row-t">
+        ${wait}<span class="tag ${buy?'buy':'sell'}">${buy?'매수':'매도'}</span> <span class="sym">${o.symbol}</span>${nmTag(o.symbol)}</div>
+       <div class="row-s num">${detail}</div></div>
+     <div class="row-r"><div class="v num">${o.amount?cur+nf(o.amount,2):'<span class=mut>—</span>'}</div></div></div>`;
+  }).join('');
+}
+async function loadKisOrders(){
+  const d=await j('/api/kis/orders'); if(!d)return;
+  const os=d.orders||[]; const el=document.getElementById('kisorders');
+  if(!os.length){el.innerHTML='<div class="empty">최근 40일 거래 기록이 없어요</div>';return;}
+  const icon={'ISA':'🟦','연금':'🟪'};
+  el.innerHTML=os.map(o=>{
+    const buy=o.side==='BUY';
+    const wait=o.pending?'<span class="tag" style="background:#3a3417;color:#ffd454">⏳대기</span> ':'';
+    const part=(o.filled!=null&&o.qty&&+o.filled!==+o.qty)?`${nf(o.filled,0)}/${nf(o.qty,0)}`:nf(o.qty,0);
+    return `<div class="row"><div class="row-l"><div class="row-t">
+        ${wait}<span class="tag ${buy?'buy':'sell'}">${o.side_name||(buy?'매수':'매도')}</span> ${icon[o.account]||''} <span class="sym">${o.name||o.symbol}</span></div>
+       <div class="row-s num">${o.at} · ${part}주 @₩${nf(o.price,0)}</div></div>
+     <div class="row-r"><div class="v num">${o.amount?amt(o.amount):'<span class=mut>—</span>'}</div></div></div>`;
+  }).join('');
+}
+async function loadAssets(){
+  const d=await j('/api/assets'); if(!d)return;
+  const el=document.getElementById('assets'); const S=d.series||{};
+  if(((S['전체 자산']||[]).filter(x=>x).length)<2){
+    el.innerHTML='<div class="empty">자산 흐름은 며칠 쌓이면 그래프로 보여요 📈<br><span class="mut" style="font-size:11px">매일 장마감(15:40)에 자동 기록돼요</span></div>';return;}
+  const row=(label,arr,big)=>{
+    arr=arr||[]; const cur=arr.length?arr[arr.length-1]:0;
+    const base=arr.find(x=>x>0)||cur||1; const chg=base?((cur/base-1)*100):0;
+    return `<div style="padding:9px 0;border-bottom:1px solid var(--line)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-weight:${big?700:600};font-size:${big?14:13}px">${label}</span>
+        <span class="num"><b>${amt(cur)}</b> <span class="${cls(chg)}" style="font-size:11px">${chg>=0?'▲':'▼'}${Math.abs(chg).toFixed(1)}%</span></span></div>
+      ${spark2(arr,big)}</div>`;
+  };
+  el.innerHTML=row('전체 자산',S['전체 자산'],true)
+    +row('💵 토스(미국)',S['토스(미국)'])
+    +row('🟦 ISA',S['ISA'])
+    +row('🟪 연금',S['연금']);
+}
 function loadAll(){
   loadPortfolio();loadProposals();loadPred();loadScreen();loadScreenKr();loadBT();
-  if(WHO!=='spouse'){loadKis();loadPaper();loadTrades(0);loadExpo();}  // 남편=토스만
+  loadCash();loadOrders();
+  if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(0);loadExpo();}  // 남편=토스만
   else{KIST={total:0,rate:null};updateHeader();}
 }
 loadAll(); updateSessions(); loadMkt();
@@ -643,6 +747,46 @@ setInterval(updateSessions,30000);
 setInterval(loadMkt,3600000);                                   // 휴장 여부 1시간마다
 setInterval(pollQuotes,10000);
 setInterval(()=>{loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(PTR.page);},60000);
+</script>
+
+<!-- 주린이 '쉬운 용어' 도움말 (검증세션 추가, 기존 렌더링 무간섭) -->
+<button id="glossBtn" onclick="openGloss()" title="어려운 말 풀이 보기"
+  style="position:fixed;right:14px;bottom:14px;z-index:50;background:#4c8dff;color:#fff;border:0;
+  border-radius:24px;padding:11px 15px;font-size:13px;font-weight:700;cursor:pointer;
+  box-shadow:0 4px 14px rgba(0,0,0,.45)">📖 쉬운 용어</button>
+<div id="glossModal" onclick="if(event.target===this)closeGloss()"
+  style="display:none;position:fixed;inset:0;z-index:51;background:rgba(0,0,0,.6);
+  align-items:flex-end;justify-content:center">
+  <div style="background:var(--card);border:1px solid var(--line);border-radius:16px 16px 0 0;
+    width:100%;max-width:560px;max-height:82vh;display:flex;flex-direction:column">
+    <div style="padding:13px 15px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px">
+      <b style="font-size:15px;white-space:nowrap">📖 쉬운 용어</b>
+      <input id="glossSearch" oninput="renderGloss()" placeholder="모르는 단어 검색…"
+        style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--fg);
+        border-radius:8px;padding:8px 10px;font-size:14px">
+      <button onclick="closeGloss()" style="background:none;border:0;color:var(--mut);font-size:22px;
+        cursor:pointer;line-height:1">&times;</button>
+    </div>
+    <div id="glossList" style="overflow:auto;padding:6px 15px 20px"></div>
+  </div>
+</div>
+<script>
+let GLOSS=null;
+async function openGloss(){
+  document.getElementById('glossModal').style.display='flex';
+  if(!GLOSS){const d=await j('/api/glossary');GLOSS=(d&&d.terms)||{};}
+  renderGloss();
+}
+function closeGloss(){document.getElementById('glossModal').style.display='none';}
+function renderGloss(){
+  const q=(document.getElementById('glossSearch').value||'').toLowerCase();
+  const el=document.getElementById('glossList');
+  const ks=Object.keys(GLOSS||{}).filter(k=>!q||k.toLowerCase().includes(q)||(GLOSS[k]||'').toLowerCase().includes(q));
+  el.innerHTML=ks.length?ks.map(k=>`<div style="padding:9px 0;border-bottom:1px solid var(--line)">
+    <b style="color:#6fb3ff">${k}</b>
+    <div style="margin-top:3px;line-height:1.55">${GLOSS[k]}</div></div>`).join('')
+    :'<div style="color:var(--mut);padding:16px 0">검색 결과가 없어요</div>';
+}
 </script>
 </body>
 </html>

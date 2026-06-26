@@ -68,6 +68,19 @@ class PaperSnapshot(Base):
     holdings: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class AssetSnapshot(Base):
+    """실계좌 자산 흐름 — 전체 + 계좌별(토스·ISA·연금) 시계열. 매일 장마감 기록."""
+    __tablename__ = "asset_snapshot"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    total_krw: Mapped[float] = mapped_column(Float)
+    toss_krw: Mapped[float] = mapped_column(Float, default=0)
+    kis_krw: Mapped[float] = mapped_column(Float, default=0)
+    isa_krw: Mapped[float] = mapped_column(Float, default=0)
+    pension_krw: Mapped[float] = mapped_column(Float, default=0)
+
+
 class Prediction(Base):
     """자기예측추적 — 예측을 기록하고 만기 후 실제와 대조해 '실측 정확도'를 산출."""
     __tablename__ = "prediction"

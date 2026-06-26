@@ -172,14 +172,18 @@ def backtest_breakout(candles: list[dict], k: float = 0.5, fee: float = 0.001) -
 
 
 def backtest_strategy(candles_by_symbol: dict[str, list[dict]],
-                      k: int = 3, horizon: int = 21, min_hist: int = 60) -> dict:
+                      k: int = 3, horizon: int = 21, min_hist: int = 60,
+                      min_bars: int = 0) -> dict:
     """전략 백테스트. 매 리밸런싱(horizon일)마다 점수 상위k(모멘텀)·하위k(평균회귀)·
-    전체(벤치)를 동일가중 보유 → 다음 구간 수익. 누적·평균 수익 비교."""
+    전체(벤치)를 동일가중 보유 → 다음 구간 수익. 누적·평균 수익 비교.
+    min_bars: 이 봉수 미만 이력 종목은 제외(짧은 종목이 align-to-min으로 구간을
+    깎는 문제 완화 — minlen↑→구간수↑)."""
     closes = {s: [c["close"] for c in cs if c["close"] > 0]
               for s, cs in candles_by_symbol.items()}
-    closes = {s: v for s, v in closes.items() if len(v) >= min_hist + horizon + 5}
+    floor = max(min_hist + horizon + 5, min_bars)
+    closes = {s: v for s, v in closes.items() if len(v) >= floor}
     if len(closes) < 2 * k:
-        return {"error": "종목/데이터 부족"}
+        return {"error": "종목/데이터 부족", "included": len(closes)}
     minlen = min(len(v) for v in closes.values())
     al = {s: v[-minlen:] for s, v in closes.items()}        # 끝 기준 정렬
     top, bot, bench = [], [], []
@@ -209,12 +213,127 @@ def backtest_strategy(candles_by_symbol: dict[str, list[dict]],
     n = len(top)
     if not n:
         return {"error": "구간 부족"}
+
+    def tstat(a: list[float], b: list[float]) -> float | None:
+        """대응표본 t값(a-b 구간차의 평균/표준오차). |t|>2면 유의."""
+        d = [a[i] - b[i] for i in range(len(a))]
+        if len(d) < 2:
+            return None
+        m = sum(d) / len(d)
+        var = sum((x - m) ** 2 for x in d) / (len(d) - 1)
+        se = (var / len(d)) ** 0.5
+        return round(m / se, 2) if se else None
+
     return {"periods": n, "horizon": horizon, "k": k,
+            "included": len(closes), "minlen": minlen,
             "momentum_cum": round(cum(top), 1), "reversion_cum": round(cum(bot), 1),
             "bench_cum": round(cum(bench), 1),
             "momentum_avg": round(sum(top) / n * 100, 2),
             "reversion_avg": round(sum(bot) / n * 100, 2),
-            "bench_avg": round(sum(bench) / n * 100, 2)}
+            "bench_avg": round(sum(bench) / n * 100, 2),
+            # 유의성: 구간수 적으면 |t|<2로 "엣지 아님"이 정상(노이즈)
+            "t_mom_vs_rev": tstat(top, bot), "t_mom_vs_bench": tstat(top, bench),
+            "t_rev_vs_bench": tstat(bot, bench)}
+
+
+def _max_drawdown(equity: list[float]) -> float:
+    """최대낙폭(%) — 음수 반환."""
+    peak, mdd = equity[0], 0.0
+    for v in equity:
+        peak = max(peak, v)
+        if peak > 0:
+            mdd = min(mdd, v / peak - 1)
+    return round(mdd * 100, 1)
+
+
+def _sharpe(daily_rets: list[float]) -> float | None:
+    """연율화 샤프(무위험 0 가정, 252일)."""
+    n = len(daily_rets)
+    if n < 2:
+        return None
+    m = sum(daily_rets) / n
+    var = sum((r - m) ** 2 for r in daily_rets) / (n - 1)
+    sd = var ** 0.5
+    return round(m / sd * (252 ** 0.5), 2) if sd else None
+
+
+def _metrics(equity: list[float]) -> dict:
+    rets = [equity[i] / equity[i - 1] - 1 for i in range(1, len(equity)) if equity[i - 1]]
+    return {"total": round((equity[-1] / equity[0] - 1) * 100, 1) if equity[0] else None,
+            "mdd": _max_drawdown(equity), "sharpe": _sharpe(rets)}
+
+
+def backtest_portfolio(candles_by_symbol: dict[str, list[dict]],
+                       core_syms: list[str], sat_syms: list[str],
+                       bench: tuple[str, ...] = ("SPY", "SCHD"),
+                       rebal: int = 5, ma: int = 50, core_w: float = 0.70,
+                       core_n: int = 4, sat_n: int = 2, fee: float = 0.001,
+                       use_ma: bool = True, use_regime: bool = True) -> dict:
+    """실제 배포 전략(MA50 추세필터+코어/새틀+SPY레짐 방어)을 포트폴리오 단위로 시뮬.
+    rebal일마다 리밸런싱, 주식가치 share기반 추적, 회전수수료 차감. SPY/SCHD buy&hold와
+    총수익·최대낙폭(MDD)·샤프 비교. ※통화혼합 방지 위해 US 슬리브(+벤치)만 평가.
+    SPY 캔들이 candles_by_symbol에 있어야 레짐 판정 가능."""
+    ser = {s: [c["close"] for c in cs if c["close"] > 0]
+           for s, cs in candles_by_symbol.items()}
+    need = set(core_syms) | set(sat_syms) | set(bench) | {"SPY"}
+    ser = {s: v for s, v in ser.items() if s in need and len(v) >= ma + rebal + 5}
+    if "SPY" not in ser:
+        return {"error": "SPY 캔들 없음(레짐 판정 불가)"}
+    minlen = min(len(v) for v in ser.values())
+    al = {s: v[-minlen:] for s, v in ser.items()}
+    spy = al["SPY"]
+    core_syms = [s for s in core_syms if s in al]
+    sat_syms = [s for s in sat_syms if s in al]
+    start = ma
+    if minlen <= start + rebal:
+        return {"error": "데이터 부족", "minlen": minlen}
+
+    def trend_ok(s, t):
+        return True if not use_ma else al[s][t] > sum(al[s][t - ma:t]) / ma
+
+    def score(s, t):
+        r = score_symbol(s, [{"close": c} for c in al[s][:t + 1]])
+        return r.score if r else None
+
+    units: dict[str, float] = {}
+    cash = 1.0
+    eq: list[float] = []
+    for t in range(start, minlen):
+        pv = cash + sum(u * al[s][t] for s, u in units.items())
+        eq.append(pv)
+        if (t - start) % rebal:
+            continue
+        regime_on = True if not use_regime else spy[t] > sum(spy[t - ma:t]) / ma
+        core_c = sorted(((s, sc) for s in core_syms if trend_ok(s, t)
+                         and (sc := score(s, t)) is not None),
+                        key=lambda x: -x[1])[:core_n]
+        sat_c = []
+        if regime_on:
+            sat_c = sorted(((s, sc) for s in sat_syms if trend_ok(s, t)
+                            and (sc := score(s, t)) is not None),
+                           key=lambda x: -x[1])[:sat_n]
+        w: dict[str, float] = {}
+        if regime_on:
+            for s, _ in core_c:
+                w[s] = core_w / core_n
+            for s, _ in sat_c:
+                w[s] = (1 - core_w) / sat_n
+        else:                                       # risk_off: 코어 50%만(절반 현금)
+            for s, _ in core_c:
+                w[s] = 0.5 / core_n
+        old_val = {s: units.get(s, 0) * al[s][t] for s in set(units) | set(w)}
+        new_val = {s: pv * w.get(s, 0.0) for s in set(units) | set(w)}
+        turnover = sum(abs(new_val[s] - old_val.get(s, 0)) for s in new_val)
+        pv -= fee * turnover
+        units = {s: pv * w[s] / al[s][t] for s in w if w[s] > 0}
+        cash = pv - sum(u * al[s][t] for s, u in units.items())
+
+    out = {"periods": len(eq), "rebal": rebal, "ma": ma, "minlen": minlen,
+           "strategy": _metrics(eq)}
+    for b in bench:
+        if b in al:
+            out[b] = _metrics([al[b][t] for t in range(start, minlen)])
+    return out
 
 
 def backtest_score(candles_by_symbol: dict[str, list[dict]],
