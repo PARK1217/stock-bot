@@ -156,9 +156,17 @@ def groq_relevant_indices(symbol: str, headlines: list[str]) -> list[int] | None
 
 
 def groq_summary(symbol: str, headlines: list[str]) -> str:
+    """주목할 이슈가 있으면 한 문장 요약, 없으면 빈 문자열(화면서 숨김)."""
     if not (settings.groq_api_key or settings.mistral_api_key) or not headlines:
         return ""
     joined = "\n".join(f"- {h}" for h in headlines[:10])
-    txt = _llm_chat(f"{symbol} 관련 최근 뉴스를 한국어 평문 한 문장으로 요약하라"
-                    f"(마크다운·별표·특수기호 없이):\n{joined}", 120)
-    return (txt or "").strip()[:120]
+    txt = _llm_chat(
+        f"{symbol} 관련 최근 뉴스 헤드라인이다. 투자자가 알아야 할 '구체적이고 주목할 만한 이슈'"
+        f"(실적·신제품·계약·규제·인수합병·급등락 사유 등)가 있으면 한국어 평문 한 문장으로 요약하라. "
+        f"단순 시세언급·반복·홍보·별다른 이슈 없음이면 정확히 'NONE'이라고만 답하라"
+        f"(마크다운·특수기호 없이):\n{joined}", 120)
+    out = (txt or "").strip()
+    if (not out or out.upper().startswith("NONE")
+            or "특이사항 없" in out or "별다른 이슈" in out or "특별한 이슈" in out):
+        return ""                                     # 이슈 없음 → 빈값(프론트서 숨김)
+    return out[:120]

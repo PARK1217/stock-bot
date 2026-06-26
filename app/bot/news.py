@@ -175,8 +175,8 @@ def get_sentiment(symbol: str, market: str = "US") -> NewsSentiment:
         score, conf, kw = _keyword_score(relevant)
         engine = "키워드(폴백)"
 
-    summary = groq_summary(symbol, [i.headline for i in relevant]) or \
-        f"{engine}, 관련기사 {len(relevant)}/{len(items)}건"
+    # 주목할 이슈 있을 때만 요약(없으면 빈값→화면서 숨김). 밋밋한 메타 폴백 제거.
+    summary = groq_summary(symbol, [i.headline for i in relevant])
     return NewsSentiment(score, conf, summary, len(relevant), relevant)
 
 
