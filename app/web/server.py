@@ -529,7 +529,25 @@ def orders_view(who: str = "me", limit: int = 20):
     from bot.brokers.toss import TossBroker, toss_spouse
     b = toss_spouse() if who == "spouse" else TossBroker()
     out = {"orders": b.order_history(limit) if b else []}
-    _cache_set(ck, out, 120)
+    _cache_set(ck, out, 60)
+    return out
+
+
+@app.get("/api/names")
+def names_view():
+    """종목명 맵 — 보유(토스 나/남편·모의)에서 증권사가 준 이름을 학습(Redis 영구)해 반환.
+    한 번 보유한 종목은 팔아도 이름이 남아 거래내역·노출 등에서 자동 표시(코드 수정 불필요).
+    프론트는 KNM(한글 시드) → 현재보유 → 이 학습맵(영어) 순으로 사용. 60초 캐시."""
+    from bot import names as N
+    if (c := _cache_get("web:names")):
+        return c
+    for getter in (lambda: portfolio("", "me"), lambda: portfolio("", "spouse"), paper):
+        try:
+            N.learn_positions((getter() or {}).get("positions", []))
+        except Exception:  # noqa: BLE001  (학습 실패는 무시)
+            pass
+    out = {"names": N.all_learned()}
+    _cache_set("web:names", out, 60)
     return out
 
 
