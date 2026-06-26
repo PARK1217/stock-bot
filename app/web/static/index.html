@@ -206,7 +206,7 @@
     <div id="scnkr"><div class="empty">계산 중 (최초 ~30초)…</div></div>
   </div>
 
-  <div class="card" data-tab="real">
+  <div class="card" data-tab="real" data-me="1">
     <h2>🎯 리밸런싱 제안</h2>
     <div id="prop"><div class="empty">—</div></div>
   </div>
@@ -605,7 +605,7 @@ async function sendChat(){
   inp.value=''; btn.disabled=true; renderChat();
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:msg,history:hist})});
+      body:JSON.stringify({message:msg,history:hist,who:WHO})});
     if(r.status===401){location.reload();return;}
     const d=await r.json();
     CHAT[CHAT.length-1]={role:'bot',content:d.reply||'(응답 없음)'};

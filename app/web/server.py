@@ -547,25 +547,28 @@ def snapshots(limit: int = 60):
                 for x in reversed(rows)]
 
 
-def _chat_context() -> str:
-    """챗봇 근거 데이터 — 현재 보유·스크리너·신뢰도·예측·계좌제약 요약."""
+def _chat_context(who: str = "me") -> str:
+    """챗봇 근거 데이터 — 보유·스크리너·신뢰도·계좌제약. who=spouse면 남편 토스만."""
     L = []
+    sp = who == "spouse"
     try:
-        p = portfolio("")
+        p = portfolio("", "spouse") if sp else portfolio("")
+        lbl = "남편 토스 계좌(미국)" if sp else "토스 실계좌(미국)"
         toss_tot = (p.get("cash", 0) or 0) + sum(x["value_krw"] for x in p.get("positions", []))
-        L.append(f"[토스 실계좌(미국) 총 {round(toss_tot):,}원, 현금 {round(p.get('cash',0)):,}원, "
+        L.append(f"[{lbl} 총 {round(toss_tot):,}원, 현금 {round(p.get('cash',0)):,}원, "
                  f"오늘 {p.get('daily_pnl_pct')}% / 전체 {p.get('total_pnl_pct')}%]")
         for x in sorted(p.get("positions", []), key=lambda z: -z["value_krw"])[:15]:
             L.append(f"  - {x['symbol']} {x['qty']:g}주 수익률 {x['pnl_pct']}% 평가 {round(x['value_krw']):,}원")
     except Exception:  # noqa: BLE001
         pass
-    try:
-        k = kis_accounts()
-        L.append(f"[한투 실계좌 총 {round(k.get('total',0)):,}원, 전체 {k.get('total_pnl_pct')}%]")
-        for x in k.get("positions", []):
-            L.append(f"  - [{x['account']}] {x['symbol']} {x['name']} {x['qty']:g}주 {x['pnl_pct']}%")
-    except Exception:  # noqa: BLE001
-        pass
+    if not sp:
+        try:
+            k = kis_accounts()
+            L.append(f"[한투 실계좌 총 {round(k.get('total',0)):,}원, 전체 {k.get('total_pnl_pct')}%]")
+            for x in k.get("positions", []):
+                L.append(f"  - [{x['account']}] {x['symbol']} {x['name']} {x['qty']:g}주 {x['pnl_pct']}%")
+        except Exception:  # noqa: BLE001
+            pass
     try:
         sc = screen()[:8]
         L.append("[추세 스크리너 상위(점수=최근 상승세 순위, 매수신호 아님)]")
@@ -582,27 +585,32 @@ def _chat_context() -> str:
                      f"이 배당/인컴 ETF군은 점수 높을수록 오히려 덜 오르는 평균회귀 경향 → 점수 추격매수 부적합]")
     except Exception:  # noqa: BLE001
         pass
-    try:
-        st = _r.get("paper:strategy")
-        if st:
-            sg = json.loads(st)
-            rg = "위험회피(하락장 방어, 새틀 중단·코어 절반·현금↑)" if sg.get("regime") == "risk_off" else "정상(risk-on)"
-            L.append(f"[모의 자동매매 전략현황] 코어-새틀라이트+MA50 추세추종. "
-                     f"시장레짐={rg}. 코어(70%) {sg.get('core')}, 새틀(30%) {sg.get('sat')}. "
-                     f"MA50 추세 꺾인 종목은 매도·현금화. 점수추격/단타는 검증상 손해라 안 씀.")
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        ex = exposure()
-        if ex.get("top"):
-            L.append("[실질 노출(ETF 룩스루): 상위5 " + str(ex["top5_pct"]) + "% 집중 — "
-                     + ", ".join(f"{t['symbol']} {t['pct']}%" for t in ex["top"][:6])
-                     + ". 여러 ETF여도 실제론 이 기업들에 노출(분산 착시 주의)]")
-    except Exception:  # noqa: BLE001
-        pass
-    L.append("[계좌 매매제약] 연금저축=국내상장 ETF/ETN·비레버리지만(해외상장·개별주·레버리지 불가). "
-             "ISA중개형=국내상장 개별주/ETF(해외상장 직접불가, 순이익500만 비과세). 소수점=해외포함 자유. "
-             "토스(미국)=현금 거의 없어 신규매수 여력 적음. 교체는 같은 계좌 안에서만(계좌간 이동 시 연금 페널티·ISA혜택 손실).")
+    if not sp:
+        try:
+            st = _r.get("paper:strategy")
+            if st:
+                sg = json.loads(st)
+                rg = "위험회피(하락장 방어, 새틀 중단·코어 절반·현금↑)" if sg.get("regime") == "risk_off" else "정상(risk-on)"
+                L.append(f"[모의 자동매매 전략현황] 코어-새틀라이트+MA50 추세추종. "
+                         f"시장레짐={rg}. 코어(70%) {sg.get('core')}, 새틀(30%) {sg.get('sat')}. "
+                         f"MA50 추세 꺾인 종목은 매도·현금화. 점수추격/단타는 검증상 손해라 안 씀.")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            ex = exposure()
+            if ex.get("top"):
+                L.append("[실질 노출(ETF 룩스루): 상위5 " + str(ex["top5_pct"]) + "% 집중 — "
+                         + ", ".join(f"{t['symbol']} {t['pct']}%" for t in ex["top"][:6])
+                         + ". 여러 ETF여도 실제론 이 기업들에 노출(분산 착시 주의)]")
+        except Exception:  # noqa: BLE001
+            pass
+    if sp:
+        L.append("[분석 대상] 남편 토스 계좌(미국 ETF/개별주). 한투·모의는 본인 전용이라 제외. "
+                 "토스는 모의환경 없는 실거래라 신중. 제안은 남편 보유 기준으로.")
+    else:
+        L.append("[계좌 매매제약] 연금저축=국내상장 ETF/ETN·비레버리지만(해외상장·개별주·레버리지 불가). "
+                 "ISA중개형=국내상장 개별주/ETF(해외상장 직접불가, 순이익500만 비과세). 소수점=해외포함 자유. "
+                 "토스(미국)=현금 거의 없어 신규매수 여력 적음. 교체는 같은 계좌 안에서만(계좌간 이동 시 연금 페널티·ISA혜택 손실).")
     return "\n".join(L)
 
 
@@ -612,9 +620,10 @@ def chat(body: dict):
     msg = (body.get("message") or "").strip()
     if not msg:
         return {"reply": "질문을 입력해 주세요."}
+    who = "spouse" if body.get("who") == "spouse" else "me"
     history = body.get("history")
     history = history[-6:] if isinstance(history, list) else []
-    ctx = _chat_context()
+    ctx = _chat_context(who)
     convo = ""
     for h in history:
         if not isinstance(h, dict):
