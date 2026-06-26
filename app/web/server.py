@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import hashlib
+import hmac
 
 import redis
 from fastapi import FastAPI, Query, Request
@@ -60,9 +61,9 @@ async def _auth(request: Request, call_next):
     if not _PW:                                    # 비번 미설정 = 인증 비활성(집망내)
         return await call_next(request)
     path = request.url.path
-    if path in _AUTH_FREE or path.startswith("/assets"):
+    if path in _AUTH_FREE or path.startswith("/assets/"):
         return await call_next(request)
-    if request.cookies.get(_AUTH_COOKIE) == _AUTH_TOKEN:
+    if hmac.compare_digest(request.cookies.get(_AUTH_COOKIE) or "", _AUTH_TOKEN):
         return await call_next(request)
     if path.startswith("/api/"):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
@@ -71,7 +72,7 @@ async def _auth(request: Request, call_next):
 
 @app.post("/api/login")
 def login(body: dict):
-    if _PW and body.get("password") == _PW:
+    if _PW and hmac.compare_digest(str(body.get("password") or ""), _PW):
         resp = JSONResponse({"ok": True})
         resp.set_cookie(_AUTH_COOKIE, _AUTH_TOKEN, max_age=60 * 60 * 24 * 30,
                         httponly=True, samesite="lax")
@@ -487,7 +488,8 @@ def paper_trades(page: int = 0, size: int = 8):
                 datetime.now().strftime("%Y%m%d")):
             ccld, ordq = r["ccld_qty"], r["ord_qty"]
             amt = round(r["amt"] * fx) if ccld > 0 else None
-            turnover += (r["amt"] or 0) * fx
+            if ccld > 0:
+                turnover += (r["amt"] or 0) * fx          # 체결분만(KR과 기준 통일)
             rows.append((r["dt"], {
                 "ts": _fmt_dt(r["dt"]), "symbol": r["symbol"], "side": r["side"],
                 "qty": ordq, "filled": ccld, "market": "US",

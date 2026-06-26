@@ -235,7 +235,7 @@
 const won=n=>n==null?'—':Math.round(n).toLocaleString()+'₩';
 let CUR='KRW';
 function toggleCur(){CUR=CUR==='KRW'?'USD':'KRW';document.getElementById('curtgl').textContent=CUR==='KRW'?'₩':'$';
-  updateHeader();renderPortfolio();renderKis();renderPaper();renderTrades();}
+  updateHeader();renderPortfolio();renderKis();renderPaper();renderTrades();loadExpo();}
 function amt(krw){if(krw==null)return'';return CUR==='KRW'?Math.round(krw).toLocaleString()+'원':'$'+Math.round(krw/(ST.fx||1540)).toLocaleString();}
 function samt(krw){if(krw==null)return'';return (krw>=0?'+':'')+amt(krw);}
 function pnlAmt(vk,pp){return (vk==null||pp==null)?null:vk-vk/(1+pp/100);}  // 평가손익 금액
@@ -358,7 +358,7 @@ async function pollQuotes(){
   const q=await j('/api/quotes?symbols='+ST.pos.map(p=>p.symbol).join(','));
   if(!q)return; const chg=new Set();
   ST.pos.forEach(p=>{const np=q[p.symbol]; if(np&&Math.abs(np-p.price)>1e-9){
-    p.price=np; p.pnl_pct=(np-p.avg_price)/p.avg_price*100; chg.add(p.symbol);}});
+    p.price=np; if(p.avg_price>0)p.pnl_pct=(np-p.avg_price)/p.avg_price*100; chg.add(p.symbol);}});
   if(chg.size){renderPortfolio(); chg.forEach(s=>{
     const r=document.querySelector(`#pf .row[data-sym="${s}"]`);
     if(r){r.classList.add('flash');setTimeout(()=>r.classList.remove('flash'),800);}});}
@@ -373,7 +373,7 @@ function heldSyms(){
 }
 function renderScreen(){renderScreenInto(window.SCN,'scn'); renderScreenInto(window.SCNKR,'scnkr');}
 function renderScreenInto(d,elId){
-  if(!d)return; const el=document.getElementById(elId); if(!el)return;
+  if(!Array.isArray(d))return; const el=document.getElementById(elId); if(!el)return;
   const mx=Math.max(...d.map(r=>r.score),1), held=heldSyms();
   el.innerHTML=d.map(r=>{
     const h=held.has(r.symbol);
