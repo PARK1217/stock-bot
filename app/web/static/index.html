@@ -237,6 +237,16 @@ function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 function md(s){s=esc(s);s=s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
   s=s.replace(/^\s*[-*]\s+/gm,'• ').replace(/\n+/g,' ');return s;}
 function mkt(m){return `<span class="tag ${m==='US'?'us':'kr'}">${m}</span>`;}
+// 종목명: 보유데이터에서 학습(정확) + KR ETF 백업 매핑
+const KNM={'069500':'KODEX 200','133690':'TIGER 미국나스닥100','360750':'TIGER 미국S&P500',
+  '379800':'KODEX 미국S&P500','458730':'TIGER 미국배당다우존스','161510':'PLUS 고배당주',
+  '329200':'TIGER 리츠부동산인프라','273130':'KODEX 종합채권액티브','210780':'TIGER 코스피고배당',
+  '122630':'KODEX 레버리지','233740':'KODEX 코스닥150레버리지','0021E0':'ACE TDF2050액티브',
+  '484790':'KODEX 미국30년국채'};
+let NAMES={};
+function learnNames(arr){(arr||[]).forEach(p=>{if(p&&p.symbol&&p.name)NAMES[p.symbol]=p.name;});}
+function nameOf(s){return NAMES[s]||KNM[s]||'';}
+function nmTag(s){const n=nameOf(s);return n?` <span class="nm">${esc(n)}</span>`:'';}
 function sparkline(hist){
   const v=hist.map(h=>h.total); if(v.length<2)return '';
   const SEED=5e8, mn=Math.min(...v,SEED), mx=Math.max(...v,SEED), rng=mx-mn||1, W=300,H=44,n=v.length;
@@ -281,6 +291,7 @@ async function loadPortfolio(){
   ST.fx=d.fx; ST.cash=d.cash; ST.daily=d.daily_pnl_pct; ST.total_pnl=d.total_pnl_pct;
   ST.daily_amt=d.daily_pnl_amt_krw; ST.total_amt=d.total_pnl_amt_krw;
   ST.pos=(d.positions||[]).sort((a,b)=>b.value_krw-a.value_krw);
+  learnNames(ST.pos);
   document.getElementById('meta').textContent=`USDKRW ${Math.round(d.fx).toLocaleString()} · 현금 ${won(d.cash)}`;
   renderPortfolio();
 }
@@ -345,7 +356,7 @@ function renderScreen(){
   document.getElementById('scn').innerHTML=d.map(r=>{
     const h=held.has(r.symbol);
     return `<div class="row"${h?' style="background:#1c1a14"':''}>
-      <div class="row-l"><div class="row-t"><span class="sym">${r.symbol}</span>
+      <div class="row-l"><div class="row-t"><span class="sym">${r.symbol}</span>${nmTag(r.symbol)}
         ${h?'<span class="tag hold">보유</span>':''}${r.trend_aligned?'<span class="tag al">정배열</span>':''}</div>
         <div class="barwrap"><span class="bar"><i style="width:${Math.max(0,r.score/mx*100)}%"></i></span>
           <span class="mut num" style="font-size:11px">상승세 ${r.score}</span></div></div>
@@ -395,7 +406,7 @@ function renderNews(){
   const d=window.NEWS; if(!d)return; const held=heldSyms();
   document.getElementById('news').innerHTML=d.map(n=>{
     const c=n.score>0.05?'up':(n.score<-0.05?'down':'mut');
-    return `<div class="news-i"><span class="${c}">●</span> <span class="sym">${n.symbol}</span>${held.has(n.symbol)?' <span class="tag hold">보유</span>':''}
+    return `<div class="news-i"><span class="${c}">●</span> <span class="sym">${n.symbol}</span>${nmTag(n.symbol)}${held.has(n.symbol)?' <span class="tag hold">보유</span>':''}
       <span class="mut"> — ${md(n.summary||'-')}</span></div>`;}).join('');
 }
 
@@ -405,9 +416,10 @@ async function loadProposals(){
   const open=(d||[]).filter(p=>p.status==='pending');
   b.innerHTML=open.length?open.map(p=>
     `<div class="row"><div class="row-l"><div class="row-t">
-       <span class="tag ${p.side==='buy'?'buy':'sell'}">${p.side.toUpperCase()}</span> <span class="sym">${p.symbol}</span></div>
+       <span class="tag ${p.side==='buy'?'buy':'sell'}">${p.side==='buy'?'매수':'매도'}</span>
+       ${mkt(p.currency==='KRW'?'KR':'US')} <span class="sym">${p.symbol}</span>${nmTag(p.symbol)}</div>
        <div class="row-s">${esc(p.reason||'')}</div></div>
-     <div class="row-r"><div class="v num">${nf(p.qty,4)}</div></div></div>`).join('')
+     <div class="row-r"><div class="v num">${nf(p.qty,4)}</div><div class="v2 mut">수량(주)</div></div></div>`).join('')
     :'<div class="empty">대기 중 제안 없음</div>';
 }
 
@@ -418,7 +430,7 @@ async function loadPred(){
     `방향 ${Math.round(a.dir_acc*100)}% · 범위 ${Math.round(a.band_acc*100)}% (n=${a.evaluated})`;
   const b=document.getElementById('pred');
   b.innerHTML=(d&&d.length)?d.slice(0,12).map(p=>
-    `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>
+    `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nmTag(p.symbol)}
        <span class="tag">${esc(p.status||'')}</span></div>
        <div class="row-s num">기준 ${nf(p.base_price)} · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span>
          ${p.actual_return!=null?` · 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span>`:''}</div></div>
@@ -428,7 +440,7 @@ async function loadPred(){
 
 // ---------- 모의 자동매매 ----------
 let PST=null;
-async function loadPaper(){const d=await j('/api/paper'); if(!d)return; PST=d; renderPaper();}
+async function loadPaper(){const d=await j('/api/paper'); if(!d)return; PST=d; learnNames(d.positions); renderPaper();}
 function renderPaper(){
   const d=PST; if(!d)return;
   const rg=d.strategy&&d.strategy.regime;
@@ -492,6 +504,7 @@ function renderTrades(){
 async function loadKis(){
   const d=await j('/api/kis'); if(!d)return;
   KIST.data=d; KIST.total=d.total; KIST.rate=d.total_pnl_pct; KIST.total_amt=d.total_pnl_amt_krw;
+  learnNames(d.positions); renderScreen(); renderNews(); loadProposals();
   updateHeader(); renderKis();
 }
 function renderKis(){
