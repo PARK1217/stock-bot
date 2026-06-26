@@ -832,6 +832,26 @@ def chat(body: dict):
     return {"reply": reply or "분석에 실패했어요. 잠시 후 다시 시도해 주세요."}
 
 
+@app.get("/api/chateval")
+def chateval_view():
+    """챗봇 콜 정확도 리포트(만기 콜 채점 포함). RAG평가 페이지 '챗봇 정확도'."""
+    from bot import chateval
+    return chateval.report()
+
+
+@app.post("/api/chateval/log")
+def chateval_log(body: dict):
+    """챗봇 답변 기록 + 콜(매수/매도·상승/하락) 추출·저장. 프론트가 답변 받은 뒤 호출."""
+    from bot import chateval
+    from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST, SINGLE_US, SINGLE_KR
+    from bot import names as N
+    known = list(set(DEFAULT_WATCHLIST + KR_WATCHLIST + SINGLE_US + SINGLE_KR)
+                 | set(N.all_learned().keys()))
+    who = "spouse" if body.get("who") == "spouse" else "me"
+    n = chateval.log_interaction(str(body.get("q") or ""), str(body.get("a") or ""), who, known)
+    return {"ok": True, "calls": n}
+
+
 # ---------------- 정적 프론트(React 빌드) ----------------
 _STATIC = Path(__file__).resolve().parent / "static"
 if (_STATIC / "assets").exists():
@@ -841,10 +861,10 @@ if (_STATIC / "index.html").exists():
     def index():
         return FileResponse(_STATIC / "index.html")
 
-if (_STATIC / "admin.html").exists():
-    @app.get("/admin")
-    def admin():                                   # 검증·평가 관리자 페이지(별도 URL)
-        return FileResponse(_STATIC / "admin.html")
+if (_STATIC / "rag.html").exists():
+    @app.get("/rag")
+    def rag_page():                                # 예측·챗봇 검증(RAG 평가) 페이지(별도 URL)
+        return FileResponse(_STATIC / "rag.html")
 
 
 @app.get("/sw.js")
