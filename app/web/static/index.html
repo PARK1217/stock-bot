@@ -266,7 +266,15 @@ function toggleHelp(id){const e=document.getElementById(id);if(e)e.style.display
 
 // ---------- 시장 세션 ----------
 function tzMin(tz){const d=new Date(new Date().toLocaleString('en-US',{timeZone:tz}));return [d.getDay(),d.getHours()*60+d.getMinutes()];}
-function usSession(){const [d,m]=tzMin('America/New_York');
+function ymdTz(tz){const d=new Date(new Date().toLocaleString('en-US',{timeZone:tz}));
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+let MKT={kr_open:true};
+const HOL_US=['2026-01-01','2026-01-19','2026-02-16','2026-04-03','2026-05-25','2026-06-19',
+  '2026-07-03','2026-09-07','2026-11-26','2026-12-25'];  // NYSE 2026 휴장
+async function loadMkt(){const d=await j('/api/market-status'); if(d){MKT=d; updateSessions();}}
+function usSession(){
+  if(HOL_US.includes(ymdTz('America/New_York'))) return ['미국 휴장','s-off'];
+  const [d,m]=tzMin('America/New_York');
   if(d===6) return ['미국 마감','s-off'];
   if(d===0&&m<20*60) return ['미국 마감','s-off'];
   if(d===5&&m>=20*60) return ['미국 마감','s-off'];
@@ -274,7 +282,9 @@ function usSession(){const [d,m]=tzMin('America/New_York');
   if(m>=570&&m<960) return ['정규장','s-reg'];
   if(m>=960&&m<1200) return ['애프터','s-aft'];
   return ['데이마켓','s-day'];}
-function krSession(){const [d,m]=tzMin('Asia/Seoul');
+function krSession(){
+  if(MKT.kr_open===false) return ['한국 휴장','s-off'];
+  const [d,m]=tzMin('Asia/Seoul');
   if(d===0||d===6) return ['한국 마감','s-off'];
   if(m>=540&&m<930) return ['한국 정규장','s-reg'];
   if(m>=480&&m<540) return ['한국 장전','s-pre'];
@@ -586,8 +596,9 @@ function showTab(t){
 initChips(); renderChat();
 showTab((function(){try{return localStorage.getItem('sbtab')||'real'}catch(e){return 'real'}})());
 function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(0);loadScreen();loadScreenKr();loadBT();}
-loadAll(); updateSessions();
+loadAll(); updateSessions(); loadMkt();
 setInterval(updateSessions,30000);
+setInterval(loadMkt,3600000);                                   // 휴장 여부 1시간마다
 setInterval(pollQuotes,10000);
 setInterval(()=>{loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(PTR.page);},60000);
 </script>

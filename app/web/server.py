@@ -206,6 +206,29 @@ def kis_accounts():
     return out
 
 
+@app.get("/api/market-status")
+def market_status():
+    """오늘 개장 여부 — KR=KIS 휴장일 API(음력공휴일 정확), US는 프론트 하드코딩. 6h 캐시."""
+    if (c := _cache_get("web:mktstat")):
+        return c
+    out = {"kr_open": True}
+    try:
+        from bot.brokers.kis import KISBroker
+        k = KISBroker(account=("63776023", "01"), paper=False)
+        today = datetime.now().strftime("%Y%m%d")
+        resp = k._get("/uapi/domestic-stock/v1/quotations/chk-holiday",
+                      k._headers("CTCA0903R"),
+                      {"BASS_DT": today, "CTX_AREA_NK": "", "CTX_AREA_FK": ""})
+        for r in resp.json().get("output", []) or []:
+            if r.get("bass_dt") == today:
+                out["kr_open"] = (r.get("opnd_yn") == "Y")
+                break
+    except Exception:  # noqa: BLE001
+        pass
+    _cache_set("web:mktstat", out, 21600)
+    return out
+
+
 @app.get("/api/quotes")
 def quotes(symbols: str = Query(default="")):
     """보유종목 현재가 일괄(1회 호출). 5초 캐시. 대시보드 라이브 갱신용."""
