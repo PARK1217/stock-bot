@@ -343,7 +343,11 @@ def forecast(symbol: str, days: int = 21):
     from bot import news
     from bot.forecast import forecast_symbol
     from bot.screener import score_symbol
-    b = get_broker()
+    if symbol[:1].isdigit():                       # 국내(숫자코드)는 KIS 캔들로
+        from bot.brokers.kis import KISBroker
+        b = KISBroker(paper=False)
+    else:
+        b = get_broker()
     closes = [c["close"] for c in b.get_candles(symbol, "1d", 200) if c["close"] > 0]
     if len(closes) < 30:
         return {"error": "데이터 부족", "symbol": symbol, "candles": len(closes)}
