@@ -22,6 +22,9 @@ SCHD_TOP = [("AVGO", .045), ("KO", .04), ("VZ", .04), ("AMGN", .04),
             ("ABBV", .038), ("CVX", .037), ("MRK", .037), ("PEP", .035),
             ("HD", .035), ("PFE", .03)]
 
+SOX_TOP = [("NVDA", .10), ("AVGO", .08), ("AMD", .06), ("TSM", .05),
+           ("QCOM", .04), ("TXN", .035), ("MU", .03), ("INTC", .03)]
+
 # ETF → 룩스루 정의. type: equity(구성종목 뉴스 가능) / rates / commodity
 LOOKTHROUGH: dict[str, dict] = {
     "JEPQ": {"type": "equity", "underlying": "Nasdaq-100", "top": NASDAQ100_TOP},
@@ -31,9 +34,21 @@ LOOKTHROUGH: dict[str, dict] = {
     "JEPI": {"type": "equity", "underlying": "S&P500(저변동)", "top": SP500_TOP},
     "SPYI": {"type": "equity", "underlying": "S&P500", "top": SP500_TOP},
     "SCHD": {"type": "equity", "underlying": "배당지수", "top": SCHD_TOP},
+    "VIG": {"type": "equity", "underlying": "배당성장", "top": SCHD_TOP},
+    "DGRO": {"type": "equity", "underlying": "배당성장", "top": SCHD_TOP},
+    "VYM": {"type": "equity", "underlying": "고배당", "top": SCHD_TOP},
+    "HDV": {"type": "equity", "underlying": "고배당", "top": SCHD_TOP},
+    "SPHD": {"type": "equity", "underlying": "고배당저변동", "top": SCHD_TOP},
+    "DIVO": {"type": "equity", "underlying": "배당커버드콜", "top": SP500_TOP},
+    "SOXL": {"type": "equity", "underlying": "반도체(SOX 3x)", "top": SOX_TOP},
     "SGOV": {"type": "rates", "underlying": "초단기 국채"},
     "BOXX": {"type": "rates", "underlying": "박스스프레드(금리)"},
     "GLDM": {"type": "commodity", "underlying": "금"},
+    # KR 상장(미국 지수 추종) — 구성종목은 미국 대형주 → 미국 뉴스로 룩스루
+    "133690": {"type": "equity", "underlying": "TIGER 미국나스닥100", "top": NASDAQ100_TOP},
+    "360750": {"type": "equity", "underlying": "TIGER 미국S&P500", "top": SP500_TOP},
+    "379800": {"type": "equity", "underlying": "KODEX 미국S&P500", "top": SP500_TOP},
+    "458730": {"type": "equity", "underlying": "TIGER 미국배당다우", "top": SCHD_TOP},
 }
 
 
