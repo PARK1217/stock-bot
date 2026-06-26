@@ -14,8 +14,9 @@
   .num{font-variant-numeric:tabular-nums}
 
   /* 헤더 */
-  header{position:sticky;top:0;z-index:5;background:rgba(15,17,21,.92);backdrop-filter:blur(8px);
-    border-bottom:1px solid var(--line);padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top))}
+  .topbar{position:sticky;top:0;z-index:6;background:rgba(15,17,21,.96);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line)}
+  header{padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top))}
   .h-top{display:flex;align-items:center;gap:10px}
   .h-top h1{font-size:17px;margin:0;white-space:nowrap}
   .h-tot{margin-left:auto;text-align:right;line-height:1.25}
@@ -109,7 +110,7 @@
     border-radius:8px;padding:9px 12px;font-size:14px}
   .chat-input button{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:0 18px;
     font-weight:600;cursor:pointer;font-size:13.5px} .chat-input button:disabled{opacity:.5}
-  .tabs{display:flex;gap:6px;padding:12px 14px 0;max-width:1180px;margin:0 auto}
+  .tabs{display:flex;gap:6px;padding:0 14px 10px;max-width:1180px;margin:0 auto}
   .tab{flex:1;background:var(--card);border:1px solid var(--line);color:var(--mut);
     border-radius:10px;padding:10px 8px;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap}
   .tab.on{color:#fff;background:var(--accent);border-color:var(--accent)}
@@ -117,6 +118,7 @@
 </style>
 </head>
 <body>
+<div class="topbar">
 <header>
   <div class="h-top">
     <h1>📈 stock-bot</h1>
@@ -139,6 +141,7 @@
   <button class="tab on" data-t="real" onclick="showTab('real')">💰 실계좌</button>
   <button class="tab" data-t="paper" onclick="showTab('paper')">🧪 모의투자</button>
   <button class="tab" data-t="watch" onclick="showTab('watch')">📈 감시·분석</button>
+</div>
 </div>
 
 <div class="wrap">
