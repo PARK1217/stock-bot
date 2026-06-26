@@ -214,6 +214,12 @@ def run_paper(dry: bool = False) -> dict:
             if dry:
                 executed.append(f"[DRY] {mk} {side.value} {sym} {qty}")
                 continue
+            # US 중복주문 방지: 모의 해외는 체결조회 지연으로 같은 세션 다음 런이 또 발주 →
+            # 최근 같은 종목·방향 주문이 있으면 스킵(3h). KR은 즉시체결이라 가드 불필요.
+            guard = f"paper:ord:{sym}:{side.value}"
+            if mk == "US" and _redis.get(guard):
+                executed.append(f"⏭️ US {side.value} {sym}: 최근 주문됨(중복방지 스킵)")
+                continue
             ref = next((t["price"] for t in targets if t["symbol"] == sym),
                        p.current_price if p else 0)              # 기준가(거래대금 근사)
             if mk == "KR":
@@ -227,6 +233,8 @@ def run_paper(dry: bool = False) -> dict:
             session.add(OrderLog(broker=f"kis-paper-{mk.lower()}", mode="paper",
                                  symbol=sym, side=side.value, qty=qty, ok=res.ok, price=ref,
                                  order_id=res.order_id, message=(res.message or "")[:250]))
+            if mk == "US" and res.ok:
+                _redis.set(guard, "1", ex=10800)                # 3h 중복방지(US 체결지연 커버)
         if not dry:
             session.add(PaperSnapshot(cash=kbal.cash, total_eval=total_krw,
                                       holdings=len(held)))

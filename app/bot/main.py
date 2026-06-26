@@ -552,6 +552,8 @@ _SCHEDULE = [
     ("accuracy", lambda: cmd_accuracy(), "mon-fri", [(16, 0)]),
     ("backtest", lambda: cmd_backtest(), "mon", [(8, 0)]),
     ("paper", lambda: cmd_paper(), "mon-fri", [(9, 15), (12, 30), (15, 0), (23, 35)]),
+    # US장 중·후반(전일 ET세션의 KST 새벽연장 23:30~05:00) — 중복방지 가드로 같은종목·방향 재발주 차단
+    ("paper_us", lambda: cmd_paper(), "tue-sat", [(1, 30), (4, 0)]),
 ]
 
 
