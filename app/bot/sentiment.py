@@ -114,6 +114,9 @@ def _openai_chat(base_url: str, key: str, model: str,
             if r.status_code in (429, 500, 502, 503, 504):
                 time.sleep(0.6 * (attempt + 1))
                 continue
+            if r.status_code in (401, 403, 404, 400):     # 영구 오류 → 재시도 무의미
+                log.warning("LLM %s 영구오류 %s, 폴백", model, r.status_code)
+                return None
             r.raise_for_status()
             return r.json()["choices"][0]["message"]["content"]
         except (httpx.HTTPError, KeyError, IndexError):

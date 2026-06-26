@@ -73,7 +73,8 @@ def etf_news_sentiment(symbol: str, n: int = 6):
     num = den = 0.0
     detail = []
     for sym, w in cons:
-        s = get_sentiment(sym, "US")
+        mkt = "KR" if sym.isdigit() else "US"     # 구성종목 시장 자동판정(KR코드=숫자)
+        s = get_sentiment(sym, mkt)
         weight = w * max(s.confidence, 0.05)  # 비중 × 신뢰도
         num += s.score * weight
         den += weight

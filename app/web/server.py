@@ -243,16 +243,17 @@ def exposure():
         return c
     from bot.etf import lookthrough, top_constituents
     hold = []                                        # (symbol, value_krw)
+    partial = False
     try:
         for x in portfolio("").get("positions", []):
             hold.append((x["symbol"], x["value_krw"]))
     except Exception:  # noqa: BLE001
-        pass
+        partial = True
     try:
         for x in kis_accounts().get("positions", []):
             hold.append((x["symbol"], x["value_krw"]))
     except Exception:  # noqa: BLE001
-        pass
+        partial = True
     total = sum(v for _, v in hold) or 1
     expo: dict[str, float] = {}
     for sym, v in hold:
@@ -264,7 +265,7 @@ def exposure():
         else:                                        # 개별주/룩스루 없음 → 그대로
             expo[sym] = expo.get(sym, 0) + v
     ranked = sorted(expo.items(), key=lambda x: -x[1])
-    out = {"total": round(total), "n": len(expo),
+    out = {"total": round(total), "n": len(expo), "partial": partial,
            "top": [{"symbol": s, "krw": round(v), "pct": round(v / total * 100, 1)}
                    for s, v in ranked[:12]],
            "top5_pct": round(sum(v for _, v in ranked[:5]) / total * 100, 1)}
@@ -597,12 +598,15 @@ def chat(body: dict):
     msg = (body.get("message") or "").strip()
     if not msg:
         return {"reply": "질문을 입력해 주세요."}
-    history = body.get("history") or []
+    history = body.get("history")
+    history = history[-6:] if isinstance(history, list) else []
     ctx = _chat_context()
     convo = ""
-    for h in history[-6:]:
+    for h in history:
+        if not isinstance(h, dict):
+            continue
         who = "사용자" if h.get("role") == "user" else "분석봇"
-        convo += f"\n{who}: {h.get('content','')}"
+        convo += f"\n{who}: {str(h.get('content',''))[:500]}"
     prompt = (
         "너는 'stock-bot'의 한국어 투자 분석 어시스턴트다. 아래 [현재 데이터]만을 근거로 "
         "사용자의 실제 포트폴리오를 분석한다. 규칙:\n"

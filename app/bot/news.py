@@ -58,7 +58,11 @@ class FinnhubProvider(NewsProvider):
                                   "to": today.isoformat(),
                                   "token": settings.finnhub_api_key}, timeout=15)
             r.raise_for_status()
-            rows = r.json()[:20]
+            rows = r.json()
+            if isinstance(rows, list):                       # datetime 최신순 보장 후 상위20
+                rows = sorted(rows, key=lambda x: x.get("datetime", 0), reverse=True)[:20]
+            else:
+                rows = []
         except httpx.HTTPError:
             log.warning("finnhub 뉴스 조회 실패: %s", symbol)
             return []
@@ -137,7 +141,7 @@ def get_sentiment(symbol: str, market: str = "US") -> NewsSentiment:
         res = etf_news_sentiment(symbol)
         if res:
             score, conf, detail = res
-            srcs = sum(d[4] for d in detail)
+            srcs = sum((d[4] if len(d) > 4 else 0) for d in detail)
             return NewsSentiment(score, conf,
                                  f"룩스루({lt['underlying']}) 구성 {len(detail)}종 가중",
                                  srcs, [])
@@ -154,7 +158,9 @@ def get_sentiment(symbol: str, market: str = "US") -> NewsSentiment:
     headlines = [i.headline for i in items]
     # 1) 관련성 필터(Groq) — 키 없으면 전체 사용
     idx = groq_relevant_indices(symbol, headlines)
-    relevant = [items[i] for i in idx if 0 <= i < len(items)] if idx else items
+    # idx=[] (Groq가 '전부 무관' 판정) ≠ None(키없음/실패). []면 관련뉴스 0=중립, None이면 전체 사용
+    relevant = ([items[i] for i in idx if 0 <= i < len(items)]
+                if idx is not None else items)
 
     # 2) 감성 점수(FinBERT) — 실패 시 키워드 폴백
     fb = finbert_scores([i.headline for i in relevant])
