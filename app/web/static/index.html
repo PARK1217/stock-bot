@@ -109,6 +109,11 @@
     border-radius:8px;padding:9px 12px;font-size:14px}
   .chat-input button{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:0 18px;
     font-weight:600;cursor:pointer;font-size:13.5px} .chat-input button:disabled{opacity:.5}
+  .tabs{display:flex;gap:6px;padding:12px 14px 0;max-width:1180px;margin:0 auto}
+  .tab{flex:1;background:var(--card);border:1px solid var(--line);color:var(--mut);
+    border-radius:10px;padding:10px 8px;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .tab.on{color:#fff;background:var(--accent);border-color:var(--accent)}
+  .tab:active{transform:scale(.97)}
 </style>
 </head>
 <body>
@@ -130,14 +135,20 @@
   </div>
 </header>
 
+<div class="tabs">
+  <button class="tab on" data-t="real" onclick="showTab('real')">💰 실계좌</button>
+  <button class="tab" data-t="paper" onclick="showTab('paper')">🧪 모의투자</button>
+  <button class="tab" data-t="watch" onclick="showTab('watch')">📈 감시·분석</button>
+</div>
+
 <div class="wrap">
-  <div class="card span2">
+  <div class="card span2" data-tab="real">
     <h2>💵 토스 포트폴리오 <span class="mut" style="font-weight:400">(미국)</span>
         <span class="sub" id="pf-st"></span></h2>
     <div id="pf"><div class="empty">불러오는 중…</div></div>
   </div>
 
-  <div class="card span2">
+  <div class="card span2" data-tab="real">
     <h2>💬 분석 챗봇 <span class="mut" style="font-weight:400;font-size:11.5px">보유·스크리너 근거 · 참고용</span></h2>
     <div id="chat-msgs" class="chat-msgs"></div>
     <div class="chat-chips" id="chat-chips"></div>
@@ -148,7 +159,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" data-tab="watch">
     <h2>📈 추세 스크리너
       <span class="sub"><span id="scn-grade"></span>
         <button class="help-btn" onclick="toggleHelp('scn-help')">ⓘ 설명</button>
@@ -170,23 +181,23 @@
     <div id="scn"><div class="empty">계산 중 (최초 ~30초)…</div></div>
   </div>
 
-  <div class="card">
+  <div class="card" data-tab="real">
     <h2>🎯 리밸런싱 제안</h2>
     <div id="prop"><div class="empty">—</div></div>
   </div>
 
-  <div class="card span2">
+  <div class="card span2" data-tab="real">
     <h2>📰 주요 이슈 요약 <span class="mut" style="font-weight:400">(보유+추세상위)</span>
         <span class="sub" id="news-st"></span></h2>
     <div id="news"><div class="empty">불러오는 중… (최초 다소 걸림)</div></div>
   </div>
 
-  <div class="card span2">
+  <div class="card span2" data-tab="real">
     <h2>🏦 한투 실계좌 <span class="sub" id="kis-st"></span></h2>
     <div id="kis"><div class="empty">불러오는 중…</div></div>
   </div>
 
-  <div class="card span2">
+  <div class="card span2" data-tab="paper">
     <h2>🧪 모의 자동매매 <span class="mut" style="font-weight:400">(전략검증)</span>
         <span class="sub" id="paper-st"></span></h2>
     <div id="paper-chart"></div>
@@ -200,7 +211,7 @@
     </div>
   </div>
 
-  <div class="card span2">
+  <div class="card span2" data-tab="watch">
     <h2>🔮 예측 기록 <span class="sub" id="acc"></span></h2>
     <div id="pred"><div class="empty">—</div></div>
   </div>
@@ -537,7 +548,14 @@ async function sendChat(){
   }catch(e){CHAT[CHAT.length-1]={role:'bot',content:'오류가 발생했어요. 잠시 후 다시 시도해 주세요.'};}
   btn.disabled=false; renderChat();
 }
+function showTab(t){
+  document.querySelectorAll('.wrap .card').forEach(c=>{c.style.display=(c.dataset.tab===t)?'':'none';});
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  try{localStorage.setItem('sbtab',t);}catch(e){}
+  window.scrollTo(0,0);
+}
 initChips(); renderChat();
+showTab((function(){try{return localStorage.getItem('sbtab')||'real'}catch(e){return 'real'}})());
 function loadAll(){loadPortfolio();loadKis();loadProposals();loadPred();loadPaper();loadTrades(0);loadScreen();loadBT();}
 loadAll(); updateSessions();
 setInterval(updateSessions,30000);
