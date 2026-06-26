@@ -258,7 +258,7 @@ def cmd_forecast_all() -> None:
     """워치리스트(US+KR) 전체 예측 생성·DB기록 (스케줄용)."""
     from bot import news
     from bot.forecast import forecast_symbol
-    from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST
+    from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST, SINGLE_US, SINGLE_KR
     from bot.storage.models import Prediction
     from bot.brokers.kis import KISBroker
     us_broker, _, _ = _build()
@@ -288,7 +288,9 @@ def cmd_forecast_all() -> None:
 
         if hasattr(us_broker, "get_candles"):
             _predict(DEFAULT_WATCHLIST, us_broker.get_candles, "US")
+            _predict(SINGLE_US, us_broker.get_candles, "US")     # 단일종목도 예측·검증
         _predict(KR_WATCHLIST, kis.get_candles, "KR")
+        _predict(SINGLE_KR, kis.get_candles, "KR")               # 단일종목도 예측·검증
         session.commit()
     made = made[0]
     log.info("예측 생성 %d건", made)
@@ -301,14 +303,17 @@ def cmd_accuracy() -> None:
     """만기된 예측을 실측과 대조 → 자기예측 정확도(캘리브레이션) 산출."""
     from datetime import timedelta
     from bot.storage.models import Prediction
+    from bot.brokers.kis import KISBroker
     broker, _, _ = _build()
+    kis = KISBroker(account=("63776023", "01"), paper=False)   # KR 종목 시세용
     with SessionLocal() as session:
         opens = session.query(Prediction).filter(Prediction.status == "open").all()
         for p in opens:
             due = p.made_at + timedelta(days=p.horizon_days * 1.5)  # 거래일 근사
             if datetime.now() < due:
                 continue
-            price = broker.get_price(p.symbol)
+            # KR(숫자코드)는 KIS, 그 외(US)는 기본 브로커로 시세 조회
+            price = kis.get_price(p.symbol) if p.symbol[:1].isdigit() else broker.get_price(p.symbol)
             if price <= 0:
                 continue
             p.actual_price = price
