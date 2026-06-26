@@ -155,18 +155,40 @@ def groq_relevant_indices(symbol: str, headlines: list[str]) -> list[int] | None
         return None
 
 
+# 한자 누출 대비 후처리(드물게 LLM이 섞어 내보냄). 금융뉴스 맥락서 안전한 것만.
+_HANJA = {"美": "미국", "中": "중국", "日": "일본", "韓": "한국", "獨": "독일", "英": "영국",
+          "佛": "프랑스", "株": "주식", "增": "증가", "減": "감소", "黑字": "흑자", "赤字": "적자"}
+
+
+def _to_hangul(s: str) -> str:
+    for h, k in _HANJA.items():
+        s = s.replace(h, k)
+    return s
+
+
+def _trim_sentence(s: str, n: int = 220) -> str:
+    """길면 마지막 완결 문장까지만(중간에 끊기는 것 방지)."""
+    if len(s) <= n:
+        return s
+    cut = s[:n]
+    i = max(cut.rfind(". "), cut.rfind("다. "), cut.rfind("다 "), cut.rfind("."))
+    return (cut[:i + 1] if i > 60 else cut).rstrip()
+
+
 def groq_summary(symbol: str, headlines: list[str]) -> str:
-    """주목할 이슈가 있으면 한 문장 요약, 없으면 빈 문자열(화면서 숨김)."""
+    """주목할 이슈가 있으면 자연스러운 한국어 1~2문장 요약, 없으면 빈 문자열(화면서 숨김)."""
     if not (settings.groq_api_key or settings.mistral_api_key) or not headlines:
         return ""
     joined = "\n".join(f"- {h}" for h in headlines[:10])
     txt = _llm_chat(
-        f"{symbol} 관련 최근 뉴스 헤드라인이다. 투자자가 알아야 할 '구체적이고 주목할 만한 이슈'"
-        f"(실적·신제품·계약·규제·인수합병·급등락 사유 등)가 있으면 한국어 평문 한 문장으로 요약하라. "
-        f"단순 시세언급·반복·홍보·별다른 이슈 없음이면 정확히 'NONE'이라고만 답하라"
-        f"(마크다운·특수기호 없이):\n{joined}", 120)
-    out = (txt or "").strip()
+        f"{symbol} 관련 최근 영어 뉴스 헤드라인이다. 투자자가 알아야 할 '구체적이고 주목할 만한 이슈'"
+        f"(실적·신제품·계약·규제·인수합병·급등락 사유 등)가 있으면 한국어로 요약하라.\n"
+        f"규칙: ①자연스럽고 매끄러운 한국어 1~2문장으로 끝까지 완결되게(중간에 끊지 말 것). "
+        f"②반드시 순한글만 — 한자(漢字)·중국어·일본어 글자 절대 금지(예: 美→미국, 中→중국, 日→일본, 株→주식). "
+        f"③직역투 말고 한국 경제뉴스처럼 자연스럽게. ④마크다운·특수기호·따옴표 없이 평문.\n"
+        f"단순 시세언급·반복·홍보이거나 별다른 이슈가 없으면 정확히 'NONE'이라고만 답하라:\n{joined}", 260)
+    out = (txt or "").strip().strip('"').strip("'")
     if (not out or out.upper().startswith("NONE")
             or "특이사항 없" in out or "별다른 이슈" in out or "특별한 이슈" in out):
         return ""                                     # 이슈 없음 → 빈값(프론트서 숨김)
-    return out[:120]
+    return _trim_sentence(_to_hangul(out))
