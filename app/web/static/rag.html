@@ -134,15 +134,21 @@ async function loadVerify(){
         ${p.dir_hit?'<span class="tag hit">적중</span>':'<span class="tag miss">빗나감</span>'}${p.band_hit?'<span class="tag al">범위적중</span>':''}</div>
       <div class="row-s num">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(기대 ${pct(p.exp_return)}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div></div></div>`;}).join('')
     :'<div class="empty">아직 채점된 예측이 없어요 (예측이 21일 지나면 채점)</div>';
-  $('vf-opc').textContent=op.length+'건 · 기대값순';
-  // 일관 정렬: 기대값(상승확률 × 기대수익) 높은 순 → 둘 다 높은 게 위로
+  $('vf-opc').textContent=op.length+'건';
+  // 기대값(상승확률 × 기대수익) 높은 순 정렬 + 미국장/한국장 구간 분리
   const expVal=p=>(p.prob_up||0)*(p.exp_return||0);
-  const opS=op.slice().sort((a,b)=>expVal(b)-expVal(a));
-  $('vf-op').innerHTML=opS.length?opS.slice(0,200).map(p=>{const up=p.prob_up>=0.5,xv=expVal(p);
+  const isKR=s=>/^\d/.test(s||'');                       // 숫자코드=국내
+  const row=p=>{const up=p.prob_up>=0.5,xv=expVal(p);
     return `<div class="row" style="opacity:.95"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)}</div>
       <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b class="${up?'up':'down'}">${up?'▲상승':'▼하락'}</b> · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span> · 상승확률 ${Math.round(p.prob_up*100)}%</div></div>
-      <div class="row-r"><div class="v num ${xv>=0?'up':'down'}">${(xv>=0?'+':'')+xv.toFixed(1)}</div><div class="v2 mut">기대값</div></div></div>`;}).join('')
-    :'<div class="empty">진행 중 예측 없음</div>';
+      <div class="row-r"><div class="v num ${xv>=0?'up':'down'}">${(xv>=0?'+':'')+xv.toFixed(1)}</div><div class="v2 mut">기대값</div></div></div>`;};
+  const sec=(title,arr)=>{
+    if(!arr.length)return '';
+    arr=arr.slice().sort((a,b)=>expVal(b)-expVal(a));
+    return `<div class="grp"><span>${title} <b>${arr.length}</b></span><span class="mut" style="font-weight:400;font-size:11px">기대값순</span></div>`
+      +arr.slice(0,150).map(row).join('');};
+  const html=sec('🇺🇸 미국장', op.filter(p=>!isKR(p.symbol)))+sec('🇰🇷 한국장', op.filter(p=>isKR(p.symbol)));
+  $('vf-op').innerHTML=html||'<div class="empty">진행 중 예측 없음</div>';
 }
 async function loadChat(){
   const d=await j('/api/chateval'); if(!d){$('ce-st').textContent='실패';return;}
