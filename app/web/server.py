@@ -620,6 +620,7 @@ def paper_trades(page: int = 0, size: int = 8):
     fx = 1540.0
     rows = []                                            # (정렬키 dt, item)
     turnover = 0.0
+    seen_us = set()                                      # ccnl에 잡힌 US (종목,방향,일자) — OrderLog 중복방지
     try:
         from bot.brokers.kis import KISBroker
         from bot.brokers.toss import TossBroker
@@ -631,11 +632,31 @@ def paper_trades(page: int = 0, size: int = 8):
             amt = round(r["amt"] * fx) if ccld > 0 else None
             if ccld > 0:
                 turnover += (r["amt"] or 0) * fx          # 체결분만(KR과 기준 통일)
+            seen_us.add((r["symbol"], r["side"], (r["dt"] or "")[:8]))
             rows.append((r["dt"], {
                 "ts": _fmt_dt(r["dt"]), "symbol": r["symbol"], "side": r["side"],
                 "qty": ordq, "filled": ccld, "market": "US",
                 "status": ("체결" if ccld >= ordq > 0 else "부분체결" if ccld > 0 else "미체결"),
                 "fill_price": round(r["price"], 2) if ccld > 0 else None, "amount_krw": amt}))
+    except Exception:  # noqa: BLE001
+        pass
+    try:                                                          # US OrderLog 보완(ccnl 누락분: 모의 해외 체결조회 지연)
+        with SessionLocal() as s:
+            us = (s.query(OrderLog)
+                  .filter(OrderLog.mode == "paper", OrderLog.ok.is_(True),
+                          OrderLog.broker.like("%us%"))
+                  .order_by(OrderLog.id.desc()).limit(200).all())
+            for t in us:
+                dt = (t.ts + timedelta(hours=9)).strftime("%Y%m%d%H%M%S")   # UTC→KST
+                if (t.symbol, t.side.lower(), dt[:8]) in seen_us:           # ccnl에 이미 있음
+                    continue
+                amt = round((t.price or 0) * t.qty * fx) if t.price else None
+                if amt:
+                    turnover += amt
+                rows.append((dt, {
+                    "ts": _fmt_dt(dt), "symbol": t.symbol, "side": t.side,
+                    "qty": t.qty, "filled": t.qty, "market": "US", "status": "체결",
+                    "fill_price": (t.price or None), "amount_krw": amt}))
     except Exception:  # noqa: BLE001
         pass
     try:                                                          # KR (OrderLog)
