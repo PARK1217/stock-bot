@@ -127,6 +127,9 @@
   .user-tog{display:inline-flex;gap:3px;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:2px}
   .user-btn{background:transparent;border:0;color:var(--mut);border-radius:7px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer}
   .user-btn.on{background:var(--accent);color:#fff}
+  .ktog{display:inline-flex;gap:2px;background:#11141a;border:1px solid var(--line);border-radius:7px;padding:2px;vertical-align:middle}
+  .kbtn{background:transparent;border:0;color:var(--mut);border-radius:6px;padding:3px 9px;font-size:11px;font-weight:600;cursor:pointer}
+  .kbtn.on{background:var(--accent);color:#fff}
 </style>
 </head>
 <body>
@@ -165,6 +168,7 @@
   <div class="card span2" data-tab="real">
     <h2>💵 토스 포트폴리오 <span class="mut" style="font-weight:400">(미국)</span>
         <span class="sub" id="pf-st"></span></h2>
+    <div class="mut" style="font-size:11px;margin:1px 0 8px;line-height:1.45">💱 미국(외화)주식 손익은 <b>달러 기준</b>이에요. 원화로 보면 <b>환차익(환율 변동분)은 빠져있어요</b> — 정확한 원화 환산 손익은 <b>토스 앱</b>을 참고하세요. <span style="opacity:.7">(차후 정확도 높여 반영 예정)</span></div>
     <div id="pf"><div class="empty">불러오는 중…</div></div>
   </div>
 
@@ -216,7 +220,8 @@
   </div>
 
   <div class="card" data-tab="watch">
-    <h2>📈 추세 스크리너
+    <h2>📈 추세 스크리너 <span class="tag us">US</span>
+      <span class="ktog"><button id="kus-etf" class="kbtn on" onclick="scnKind('us','etf')">ETF·배당</button><button id="kus-sgl" class="kbtn" onclick="scnKind('us','single')">단일종목</button></span>
       <span class="sub"><span id="scn-grade"></span>
         <button class="help-btn" onclick="toggleHelp('scn-help')">ⓘ 설명</button>
         <span id="scn-st">로딩…</span></span></h2>
@@ -238,7 +243,9 @@
   </div>
 
   <div class="card" data-tab="watch">
-    <h2>📈 추세 스크리너 <span class="tag kr">KR</span> <span class="sub" id="scnkr-st">로딩…</span></h2>
+    <h2>📈 추세 스크리너 <span class="tag kr">KR</span>
+      <span class="ktog"><button id="kkr-etf" class="kbtn on" onclick="scnKind('kr','etf')">ETF·배당</button><button id="kkr-sgl" class="kbtn" onclick="scnKind('kr','single')">단일종목</button></span>
+      <span class="sub" id="scnkr-st">로딩…</span></h2>
     <div id="scnkr"><div class="empty">계산 중 (최초 ~30초)…</div></div>
   </div>
 
@@ -248,9 +255,17 @@
   </div>
 
   <div class="card span2" data-tab="ai">
-    <h2>📰 주요 이슈 요약 <span class="mut" style="font-weight:400">(보유+추세상위)</span>
+    <h2>📰 주요 이슈 요약 <span class="mut" style="font-weight:400">(보유·급등·화제 종목)</span>
         <span class="sub" id="news-st"></span></h2>
     <div id="news"><div class="empty">불러오는 중… (최초 다소 걸림)</div></div>
+  </div>
+
+  <div class="card span2" data-tab="ai">
+    <a href="/rag" style="display:flex;align-items:center;justify-content:space-between;padding:15px 16px;text-decoration:none;color:var(--fg)">
+      <span><b>🧪 RAG 평가 페이지 열기</b><br>
+        <span class="mut" style="font-size:12px">21일 예측 적중률 · 종목별 신뢰도 · 챗봇 정확도</span></span>
+      <span style="font-size:20px;color:var(--accent)">→</span>
+    </a>
   </div>
 
   <div class="card span2" data-tab="paper" data-me="1">
@@ -317,7 +332,11 @@ const KNM={'069500':'KODEX 200','133690':'TIGER 미국나스닥100','360750':'TI
   'BAC':'뱅크오브아메리카','JNJ':'존슨앤드존슨','PG':'P&G','CRM':'세일즈포스','ORCL':'오라클',
   // 예측 워치리스트 배당·인컴 ETF
   'DIVO':'배당 인컴','HDV':'고배당','QYLD':'나스닥 커버드콜','SPHD':'고배당 저변동',
-  'VYM':'고배당','SCHY':'미국外 배당','SPYD':'S&P 고배당','NOBL':'배당귀족','DGRW':'배당성장'};
+  'VYM':'고배당','SCHY':'미국外 배당','SPYD':'S&P 고배당','NOBL':'배당귀족','DGRW':'배당성장',
+  // 단일종목(개별주) 스크리너
+  'PLTR':'팔란티어','005930':'삼성전자','000660':'SK하이닉스','373220':'LG에너지솔루션',
+  '207940':'삼성바이오로직스','005380':'현대차','000270':'기아','035420':'NAVER',
+  '035720':'카카오','005490':'POSCO홀딩스','068270':'셀트리온','105560':'KB금융','012330':'현대모비스'};
 let NAMES={},LEARNED={};
 function learnNames(arr){(arr||[]).forEach(p=>{if(p&&p.symbol&&p.name)NAMES[p.symbol]=p.name;});}
 async function loadNames(){try{const d=await j('/api/names');if(d&&d.names)LEARNED=d.names;}catch(e){}}  // 증권사 학습이름(영구) 로드
@@ -464,14 +483,26 @@ function renderScreenInto(d,elId){
         <div class="v2 ${cls(r.ret_1m)} num">1개월 ${pct(r.ret_1m)}</div>
         <div class="v2 ${cls(r.ret_3m)} num">3개월 ${pct(r.ret_3m)}</div></div></div>`;}).join('');
 }
+let SCNK={us:'etf',kr:'etf'};                          // 스크리너 종류(etf/단일) 탭 상태
+function scnKind(mkt,kind){
+  SCNK[mkt]=kind;
+  const p=mkt==='us'?'kus':'kkr';
+  document.getElementById(p+'-etf').classList.toggle('on',kind==='etf');
+  document.getElementById(p+'-sgl').classList.toggle('on',kind==='single');
+  if(mkt==='us')loadScreen(); else loadScreenKr();
+}
 async function loadScreen(){
-  const d=await j('/api/screen'); const st=document.getElementById('scn-st');
-  if(!d){st.textContent='실패';return} st.textContent=d.length+'종';
+  const st=document.getElementById('scn-st'); st.textContent='로딩…';
+  document.getElementById('scn').innerHTML='<div class="empty">계산 중 (단일은 최초 ~30초)…</div>';
+  const d=await j('/api/screen?market=us&kind='+SCNK.us);
+  if(!d){st.textContent='실패';return} st.textContent=d.length+'종'+(SCNK.us==='single'?' · 개별주':'');
   window.SCN=d; renderScreenInto(d,'scn'); loadNews();
 }
 async function loadScreenKr(){
-  const d=await j('/api/screen?market=kr'); const st=document.getElementById('scnkr-st');
-  if(!d){st.textContent='실패';return} st.textContent=d.length+'종';
+  const st=document.getElementById('scnkr-st'); st.textContent='로딩…';
+  document.getElementById('scnkr').innerHTML='<div class="empty">계산 중 (단일은 최초 ~30초)…</div>';
+  const d=await j('/api/screen?market=kr&kind='+SCNK.kr);
+  if(!d){st.textContent='실패';return} st.textContent=d.length+'종'+(SCNK.kr==='single'?' · 개별주':'');
   window.SCNKR=d; renderScreenInto(d,'scnkr');
 }
 function gradeColor(g){return g==='양호'?'var(--up)':g==='보통'?'var(--warn)':g==='역상관'?'var(--down)':'var(--mut)';}
@@ -498,21 +529,37 @@ async function loadBT(){
 
 // ---------- 뉴스 ----------
 async function loadNews(){
-  const holds=(ST.pos||[]).slice(0,6).map(p=>p.symbol);
-  const top=(window.SCN||[]).slice(0,5).map(r=>r.symbol);
-  const syms=[...new Set([...holds,...top])];
+  const scn=window.SCN||[];
+  const holds=(ST.pos||[]).slice(0,6).map(p=>p.symbol);                       // 보유
+  const movers=scn.slice().sort((a,b)=>(b.ret_1m||0)-(a.ret_1m||0)).slice(0,5).map(r=>r.symbol); // 크게 오르는
+  const syms=[...new Set([...holds,...movers])].slice(0,10);
   if(!syms.length)return;
   document.getElementById('news-st').textContent='로딩…';
   const d=await j('/api/news?symbols='+syms.join(','));
   if(!d){document.getElementById('news-st').textContent='실패';return}
-  document.getElementById('news-st').textContent=d.length+'종';
   window.NEWS=d; renderNews();
+}
+function polBadge(p,score){
+  const pol=p||(score>=0.15?'긍정':score<=-0.15?'부정':'중립');   // 구버전 캐시 폴백
+  if(pol==='긍정')return ' <span class="tag" style="background:#173a2c;color:var(--up)">🟢긍정</span>';
+  if(pol==='부정')return ' <span class="tag" style="background:#3a1a1f;color:var(--down)">🔴부정</span>';
+  return ' <span class="tag" style="color:var(--mut)">⚪중립</span>';
 }
 function renderNews(){
   const d=window.NEWS; if(!d)return; const held=heldSyms();
-  document.getElementById('news').innerHTML=d.map(n=>{
+  const retOf={}; (window.SCN||[]).forEach(r=>retOf[r.symbol]=r.ret_1m);
+  const ok=s=>{const x=(s||'').trim();return x.length>=8 && x!=='없음' && !x.includes('조회 오류')
+    && !x.includes('뉴스 미적용') && !x.includes('거시주도') && !x.includes('룩스루') && !x.includes('관련기사');};  // 메타요약(이슈 아님) 제외
+  // 실제 이슈 있는 것만(요약 비거나 언급 0 제외) → 많이 언급된 순
+  const items=d.filter(n=>ok(n.summary) && (n.sources||0)>0)
+               .sort((a,b)=>(b.sources||0)-(a.sources||0));
+  const st=document.getElementById('news-st'), box=document.getElementById('news');
+  if(!items.length){box.innerHTML='<div class="empty">지금은 특별히 요약할 이슈가 없어요 👍</div>';st.textContent='이슈 없음';return;}
+  st.textContent=items.length+'건';
+  box.innerHTML=items.map(n=>{
     const c=n.score>0.05?'up':(n.score<-0.05?'down':'mut');
-    return `<div class="news-i"><span class="${c}">●</span> <span class="sym">${n.symbol}</span>${nmTag(n.symbol)}${held.has(n.symbol)?' <span class="tag hold">보유</span>':''}
+    const big=(retOf[n.symbol]||0)>=10;                                       // 한달 +10%↑ = 급등
+    return `<div class="news-i"><span class="${c}">●</span> <span class="sym">${n.symbol}</span>${nmTag(n.symbol)}${polBadge(n.polarity,n.score)}${held.has(n.symbol)?' <span class="tag hold">보유</span>':''}${big?' <span class="tag" style="background:#3a2c17;color:var(--warn)">급등</span>':''}${n.sources?` <span class="mut" style="font-size:10px">·${n.sources}건 언급</span>`:''}
       <span class="mut"> — ${md(n.summary||'-')}</span></div>`;}).join('');
 }
 
@@ -587,6 +634,38 @@ async function loadPred(){
          ${p.actual_return!=null?` · 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span>`:''}</div></div>
      <div class="row-r"><div class="v num">${Math.round(p.prob_up*100)}%</div><div class="v2 mut">상승확률</div></div></div>`;}).join('')
     :'<div class="empty">예측 기록 없음 (스케줄 가동 후 누적)</div>';
+}
+
+// ---------- 예측 검증(자기채점) ----------
+async function loadVerify(){
+  const [d,a]=await Promise.all([j('/api/predictions'),j('/api/accuracy')]);
+  const el=document.getElementById('verify'),st=document.getElementById('vf-st');
+  if(!el)return;
+  if(!d){el.innerHTML='<div class="empty">불러오기 실패</div>';return;}
+  if(a&&a.evaluated){const dh=a.dir_acc>=0.5;
+    st.innerHTML=`방향 <b class="${dh?'up':'down'}">${Math.round(a.dir_acc*100)}%</b> · 범위 ${Math.round(a.band_acc*100)}% <span class="mut">(검증 ${a.evaluated}건)</span>`;}
+  const ev=(d||[]).filter(p=>p.status==='evaluated'), op=(d||[]).filter(p=>p.status==='open');
+  // 종목별 적중 집계
+  const bySym={};
+  ev.forEach(p=>{const s=bySym[p.symbol]||(bySym[p.symbol]={n:0,hit:0});s.n++;if(p.dir_hit)s.hit++;});
+  let html=`<div class="help-box">📊 매일 <b>21일 뒤</b>를 예측하고, 21일이 지나면 <b>실제로 맞았는지 스스로 채점</b>합니다. 방향(오를지/내릴지)·범위(예측 범위 안에 들었는지) 적중률로 <b>이 예측을 얼마나 믿을지</b> 가늠해요.</div>`;
+  if(ev.length){
+    html+=`<div class="grp"><span>✅ 검증 완료 <b>${ev.length}</b>건</span><span class="mut" style="font-weight:400;font-size:11px">예측방향 → 실제결과</span></div>`;
+    html+=ev.slice(0,25).map(p=>{const up=p.prob_up>=0.5;
+      return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nmTag(p.symbol)}
+          ${p.dir_hit?'<span class="tag" style="background:#173a2c;color:var(--up)">적중</span>':'<span class="tag" style="background:#3a1a1f;color:var(--down)">빗나감</span>'}
+          ${p.band_hit?'<span class="tag al">범위적중</span>':''}</div>
+        <div class="row-s num" style="white-space:normal">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(기대 ${pct(p.exp_return)}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div></div></div>`;}).join('');
+  }
+  if(op.length){
+    html+=`<div class="grp"><span>⏳ 진행 중 <b>${op.length}</b>건</span><span class="mut" style="font-weight:400;font-size:11px">21일 후 채점</span></div>`;
+    html+=op.slice(0,20).map(p=>{const up=p.prob_up>=0.5;
+      return `<div class="row" style="opacity:.85"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nmTag(p.symbol)}</div>
+        <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b>${up?'▲상승':'▼하락'}</b>(기대 ${pct(p.exp_return)})</div></div>
+        <div class="row-r"><div class="v num">${Math.round(p.prob_up*100)}%</div><div class="v2 mut">상승확률</div></div></div>`;}).join('');
+  }
+  if(!ev.length&&!op.length)html+='<div class="empty">예측 기록 없음 (스케줄 가동 후 누적)</div>';
+  el.innerHTML=html;
 }
 
 // ---------- 모의 자동매매 ----------
@@ -687,7 +766,8 @@ function renderKis(){
 
 // ---------- 부팅 ----------
 // ---------- 분석 챗봇 ----------
-let CHAT=[];
+let CHAT=(function(){try{return JSON.parse(localStorage.getItem('sbchat')||'[]')}catch(e){return[]}})();  // 대화 복원
+function saveChat(){try{localStorage.setItem('sbchat',JSON.stringify(CHAT.slice(-40)))}catch(e){}}
 const CHIPS=['지금 뭘 팔고 뭘 사면 좋을까?','내 포트폴리오 분석해줘','집중도·리스크 점검해줘','스크리너 상위 종목 사도 돼?'];
 function mdChat(s){s=esc(s);
   s=s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
@@ -698,9 +778,10 @@ function askChip(el){document.getElementById('chat-in').value=el.textContent;sen
 function renderChat(){
   const b=document.getElementById('chat-msgs'); if(!b)return;
   b.innerHTML=CHAT.length?CHAT.map(m=>
-    `<div class="chat-m ${m.role==='user'?'u':'b'}"><span class="who">${m.role==='user'?'🙋 나':'🤖 분석봇'}</span>${m.role==='user'?esc(m.content):mdChat(m.content)}</div>`).join('')
+    `<div class="chat-m ${m.role==='user'?'u':'b'}"><span class="who">${m.role==='user'?'🙋 나':'🤖 분석봇'}${m.cached?' <span class="mut" style="font-size:10px">♻️ 이전답변</span>':''}</span>${m.role==='user'?esc(m.content):mdChat(m.content)}</div>`).join('')
     :'<div class="empty">보유·스크리너·신뢰도를 근거로 분석해드려요. 아래 예시를 눌러보세요 ↓</div>';
   b.scrollTop=b.scrollHeight;
+  saveChat();
 }
 async function sendChat(){
   const inp=document.getElementById('chat-in'),btn=document.getElementById('chat-send');
@@ -713,7 +794,8 @@ async function sendChat(){
       body:JSON.stringify({message:msg,history:hist,who:WHO})});
     if(r.status===401){location.reload();return;}
     const d=await r.json();
-    CHAT[CHAT.length-1]={role:'bot',content:d.reply||'(응답 없음)'};
+    CHAT[CHAT.length-1]={role:'bot',content:d.reply||'(응답 없음)',cached:!!d.cached};  // 로깅·콜기록·캐시는 서버 chat()
+
   }catch(e){CHAT[CHAT.length-1]={role:'bot',content:'오류가 발생했어요. 잠시 후 다시 시도해 주세요.'};}
   btn.disabled=false; renderChat();
 }
