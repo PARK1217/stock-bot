@@ -56,7 +56,9 @@ CORE_US = ["SCHD", "JEPQ", "SPYI", "JEPI", "VIG", "DGRO", "O", "QQQI"]
 SAT_KR = ["122630", "233740"]                  # KODEX 레버리지·코스닥150레버리지
 SAT_US = ["SOXL", "TQQQ", "NVDA"]              # 고변동 성장/레버리지
 CORE_N, SAT_N = 4, 2                            # 코어 4슬롯 / 새틀 2슬롯
-CORE_W = 0.70                                   # 코어 70% / 새틀 30%
+CORE_W = 0.85                                   # 코어 85% / 새틀 15%
+# (다레짐 백테스트 2018~2026: 새틀30%=MDD-30%로 -25%한도 위반, 15%=MDD-24%로 한도내
+#  +샤프 0.79 유지. investor-profile -25% 한도 준수. 검증세션 2026-06-26)
 TREND_MA = 50                                   # 추세필터 이동평균(검증: MA50이 낙폭 방어)
 
 
@@ -131,6 +133,48 @@ def _select(kis, toss) -> tuple[list[dict], list[dict]]:
     return core[:CORE_N], sat[:SAT_N]
 
 
+def _rebalance_orders(targets, held, per_of, tsyms, market, fx, total_krw=None, band=0.15):
+    """타겟 리밸런싱 주문 생성(순수 함수 → 테스트 가능).
+    ① 타겟外(추세이탈 포함) 보유 전량매도  ② 타겟별 슬롯예산(per_of) 대비
+    부족분 매수/초과분 트림, 밴드 ±band 안이면 거래 안 함(휩쏘·회전 억제).
+    risk_off에서 per가 줄면 기존 코어도 초과분 트림 → '절반 현금화' 실현.
+    **가용현금 캡**: total_krw 주어지면 누적 투자액이 총자산을 못 넘게 매수 제한
+    (통합증거금이라 dnca가 5억 고정돼 한도 없이 과매수하던 버그 차단).
+    열린 시장(market)만 체결. 반환 [(sym, side, qty, market, position)]."""
+    orders = []
+    # 현재 보유 평가합(KRW) — 매도는 예산 환원, 매수는 차감 → invested ≤ total_krw 유지.
+    invested = sum(p.market_value * (fx if mk == "US" else 1.0) for p, mk in held.values())
+    for sym, (p, mk) in held.items():               # ① 타겟外 전량매도
+        if sym not in tsyms and p.qty > 0 and mk == market:
+            orders.append((sym, Side.SELL, int(p.qty), mk, p))
+            invested -= p.market_value * (fx if mk == "US" else 1.0)
+    for t in targets:                               # ② 타겟 밴드 리밸런싱
+        if t["market"] != market:
+            continue
+        f = fx if t["market"] == "US" else 1.0
+        price = t["price"] * f
+        pos = held[t["symbol"]][0] if t["symbol"] in held else None
+        cur_krw = pos.market_value * f if pos else 0
+        target_krw = per_of[t["symbol"]]
+        gap = target_krw - cur_krw
+        if target_krw <= 0 or abs(gap) < target_krw * band:    # 밴드 내 → 패스
+            continue
+        if gap > 0:                                            # 부족 → 매수
+            qty = int(gap // price)
+            if total_krw is not None and price > 0:            # 가용예산 캡(과매수 방지)
+                room = total_krw - invested
+                qty = min(qty, int(room // price)) if room > 0 else 0
+            if qty > 0:
+                orders.append((t["symbol"], Side.BUY, qty, t["market"], None))
+                invested += qty * price
+        elif pos:                                              # 초과 → 트림 매도
+            qty = min(int((-gap) // price), int(pos.qty))
+            if qty > 0:
+                orders.append((t["symbol"], Side.SELL, qty, t["market"], pos))
+                invested -= qty * price
+    return orders
+
+
 def run_paper(dry: bool = False) -> dict:
     kis = KISBroker(paper=True)   # 항상 모의
     toss = TossBroker()
@@ -162,20 +206,7 @@ def run_paper(dry: bool = False) -> dict:
     per_of = {t["symbol"]: (sat_per if t["symbol"] in sat_syms else core_per) for t in targets}
     market = _open_market()
 
-    orders = []  # (symbol, side, qty, market, position)
-    # ① 타겟外(추세 이탈 포함) 보유 전량 매도 — 열린 시장만
-    for sym, (p, mk) in held.items():
-        if sym not in tsyms and p.qty > 0 and mk == market:
-            orders.append((sym, Side.SELL, int(p.qty), mk, p))
-    # ② 타겟 매수 — 슬롯 예산(per)까지, 열린 시장만
-    for t in targets:
-        if t["market"] != market:
-            continue
-        f = fx if t["market"] == "US" else 1.0
-        cur_krw = held[t["symbol"]][0].market_value * f if t["symbol"] in held else 0
-        qty = int((per_of[t["symbol"]] - cur_krw) // (t["price"] * f))
-        if qty > 0:
-            orders.append((t["symbol"], Side.BUY, qty, t["market"], None))
+    orders = _rebalance_orders(targets, held, per_of, tsyms, market, fx, total_krw=total_krw)
 
     executed = []
     with SessionLocal() as session:
