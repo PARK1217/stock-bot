@@ -52,6 +52,20 @@
   .bar>i{display:block;height:100%}
   .qa{padding:10px 14px;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.5}
   .qa .q{color:var(--fg);font-weight:600} .qa .a{color:#b8bfca;margin-top:4px;white-space:pre-wrap}
+  /* 예측 카드(진행 중) */
+  .pr{padding:11px 14px;border-bottom:1px solid var(--line)}
+  .pr:last-child{border-bottom:none}
+  .pr-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .pr-sym{font-weight:700;font-size:14px;letter-spacing:.2px}
+  .pr-nm{color:var(--mut);font-weight:400;font-size:12px;margin-left:5px}
+  .pr-exp{font-weight:800;font-size:16px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .pr-sub{font-size:11px;color:var(--mut);margin:2px 0 8px}
+  .pr-mets{display:flex;gap:16px;flex-wrap:wrap}
+  .met{flex:1;min-width:128px}
+  .met-h{font-size:10.5px;color:var(--mut);display:flex;justify-content:space-between;margin-bottom:4px}
+  .met-bar{height:7px;background:#262c38;border-radius:4px;overflow:hidden}
+  .met-bar>i{display:block;height:100%;border-radius:4px;transition:width .3s}
+  .hzchip{font-size:10px;padding:1px 7px;border-radius:6px;background:#1c2433;color:#7aa2e3;font-weight:700;vertical-align:middle}
 </style>
 </head>
 <body>
@@ -213,10 +227,25 @@ function opSort(k){
   document.querySelectorAll('.schip').forEach(b=>b.classList.toggle('on',OPSORT.includes(b.dataset.s)));
   renderOp();
 }
-function opRow(p){const up=p.prob_up>=0.5,xv=(p.prob_up||0)*(p.exp_return||0);
-  return `<div class="row" style="opacity:.95"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)}</div>
-    <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b class="${up?'up':'down'}">${up?'▲상승':'▼하락'}</b> · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span> · 상승확률 ${Math.round(p.prob_up*100)}% · ${p.winrate!=null?`<span title="이런 예측이 과거에 맞은 비율">신뢰도 ${Math.round(p.winrate*100)}%</span>`:`<span class="mut" title="백테스트 표본 부족 — 아직 신뢰도 미산출">신뢰도 —(표본부족)</span>`}</div></div>
-    <div class="row-r"><div class="v num ${xv>=0?'up':'down'}">${(xv>=0?'+':'')+xv.toFixed(1)}</div><div class="v2 mut">기대값</div></div></div>`;}
+function opRow(p){
+  const up=p.prob_up>=0.5, prob=Math.round((p.prob_up||0)*100);
+  const wr=p.winrate==null?null:Math.round(p.winrate*100);
+  const probC=prob>=60?'var(--up)':prob>=50?'#7fc8a0':'var(--down)';
+  const wrC=wr==null?'#5a6172':wr>=70?'var(--up)':wr>=50?'#d9b24a':'var(--down)';
+  const d=(p.made_at||'').slice(0,10), rel=relDay(d);
+  return `<div class="pr">
+    <div class="pr-top">
+      <div style="min-width:0"><span class="pr-sym">${p.symbol}</span><span class="pr-nm">${esc(NAMES[p.symbol]||'')}</span> <span class="hzchip">${p.horizon_days}일</span></div>
+      <div class="pr-exp ${cls(p.exp_return)}">${pct(p.exp_return)}</div>
+    </div>
+    <div class="pr-sub"><b class="${up?'up':'down'}">${up?'▲ 상승':'▼ 하락'}</b> 예측 · 기대수익 · ${d}${rel?' · '+rel:''}</div>
+    <div class="pr-mets">
+      <div class="met"><div class="met-h"><span>상승확률</span><b style="color:${probC}">${prob}%</b></div>
+        <div class="met-bar"><i style="width:${prob}%;background:${probC}"></i></div></div>
+      <div class="met"><div class="met-h"><span>신뢰도 <span class="mut" style="font-weight:400">(정답일 확률)</span></span><b style="color:${wrC}">${wr==null?'표본부족':wr+'%'}</b></div>
+        <div class="met-bar"><i style="width:${wr||0}%;background:${wrC}"></i></div></div>
+    </div>
+  </div>`;}
 function renderOp(){
   const all=(OPDATA[OPMKT]||[]), lbl=OPMKT==='us'?'🇺🇸 미국장':'🇰🇷 한국장';
   const ds=opDatesList();
