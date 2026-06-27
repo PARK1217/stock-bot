@@ -113,8 +113,14 @@ class TossBroker(BrokerAdapter):
 
     # ---------- market ----------
     def usdkrw(self) -> float:
-        """USDKRW 환율. 실패해도 0을 반환하지 않음(USD자산 0원 방지) —
-        마지막 성공값(redis 24h) → 없으면 1540 폴백."""
+        """USDKRW 환율. 5분 캐시(평가용엔 충분·토스 API 과다호출 방지) → 실시간 조회 →
+        24h 장애대비 마지막값 → settings.fx_fallback. 0은 반환 안 함(USD자산 0원 방지)."""
+        try:
+            fresh = self._redis.get("toss:fx:usdkrw")   # 5분 신선 캐시(있으면 API 생략)
+            if fresh:
+                return float(fresh)
+        except Exception:  # noqa: BLE001
+            pass
         try:
             r = self._get("/api/v1/exchange-rate",
                           {"baseCurrency": "USD", "quoteCurrency": "KRW"})
@@ -122,17 +128,18 @@ class TossBroker(BrokerAdapter):
             res = r.json().get("result", {})
             rate = float(res.get("rate") or res.get("midRate") or 0)
             if rate > 0:
-                self._redis.set("toss:fx:usdkrw", rate, ex=24 * 3600)
+                self._redis.set("toss:fx:usdkrw", rate, ex=300)          # 5분 신선
+                self._redis.set("toss:fx:usdkrw:last", rate, ex=24 * 3600)  # 24h 장애대비
                 return rate
         except (httpx.HTTPError, ValueError):
             pass
         try:
-            cached = self._redis.get("toss:fx:usdkrw")
-            if cached:
-                return float(cached)
+            last = self._redis.get("toss:fx:usdkrw:last")   # API 실패 → 마지막 성공값
+            if last:
+                return float(last)
         except Exception:  # noqa: BLE001
             pass
-        log.warning("토스 환율 조회 실패 → 폴백 1540")
+        log.warning("토스 환율 조회 실패 → 폴백 %s", settings.fx_fallback)
         return settings.fx_fallback
 
     def get_price(self, symbol: str) -> float:
