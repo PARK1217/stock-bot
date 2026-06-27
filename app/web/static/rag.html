@@ -66,7 +66,8 @@
   <div class="card" data-tab="verify">
     <h2>📊 예측 검증 (7·14·21일) <span class="sub" id="vf-st">로딩…</span></h2>
     <div class="help-box">매일 <b>7·14·21영업일 뒤</b> 가격을 예측하고, 해당 영업일이 지나면 <b>실제로 맞았는지 스스로 채점</b>합니다.
-      단기(7일)부터 빨리 검증돼요. <b>방향</b>·<b>범위</b> 적중률로 이 예측을 얼마나 믿을지 가늠해요.</div>
+      단기(7일)부터 빨리 검증돼요. <b>방향</b>·<b>범위</b> 적중률로 이 예측을 얼마나 믿을지 가늠해요.
+      <br>· <b>상승확률</b> = 오를 가능성(이번 베팅) · <b>신뢰도</b> = 이런 예측이 <b>과거에 맞은 비율</b>(=정답일 확률).</div>
     <div class="big" id="vf-sum"></div>
     <div id="vf-bysym"></div>
   </div>
@@ -142,7 +143,7 @@ async function loadVerify(){
   $('vf-ev').innerHTML=ev.length?ev.slice(0,120).map(p=>{const up=p.prob_up>=0.5;
     return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)} <span class="tag">${p.horizon_days}일</span>
         ${p.dir_hit?'<span class="tag hit">적중</span>':'<span class="tag miss">빗나감</span>'}${p.band_hit?'<span class="tag al">범위적중</span>':''}</div>
-      <div class="row-s num">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(기대 ${pct(p.exp_return)}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div>
+      <div class="row-s num">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(상승확률 ${Math.round(p.prob_up*100)}%${p.winrate!=null?` · 신뢰도 ${Math.round(p.winrate*100)}%`:''}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div>
       ${(!p.dir_hit&&p.miss_reason)?`<div class="row-s" style="white-space:normal;line-height:1.45;color:#c9a86a">💡 ${esc(p.miss_reason)}</div>`:''}</div></div>`;}).join('')
     :'<div class="empty">아직 채점된 예측이 없어요 (7·14·21영업일 지나면 단기부터 채점)</div>';
   $('vf-opc').textContent=op.length+'건';
@@ -158,7 +159,7 @@ function renderOp(){
   const lbl=OPMKT==='us'?'🇺🇸 미국장':'🇰🇷 한국장';
   $('vf-op').innerHTML=arr.length?arr.slice(0,200).map(p=>{const up=p.prob_up>=0.5,xv=expVal(p);
     return `<div class="row" style="opacity:.95"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)} <span class="tag">${p.horizon_days}일</span></div>
-      <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b class="${up?'up':'down'}">${up?'▲상승':'▼하락'}</b> · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span> · 상승확률 ${Math.round(p.prob_up*100)}%</div></div>
+      <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b class="${up?'up':'down'}">${up?'▲상승':'▼하락'}</b> · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span> · 상승확률 ${Math.round(p.prob_up*100)}%${p.winrate!=null?` · <span title="이런 예측이 과거에 맞은 비율">신뢰도 ${Math.round(p.winrate*100)}%</span>`:''}</div></div>
       <div class="row-r"><div class="v num ${xv>=0?'up':'down'}">${(xv>=0?'+':'')+xv.toFixed(1)}</div><div class="v2 mut">기대값</div></div></div>`;}).join('')
     :`<div class="empty">${lbl} 진행 중 예측 없음</div>`;
 }

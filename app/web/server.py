@@ -440,7 +440,7 @@ def predictions(limit: int = 600):
             "prob_up": p.prob_up, "exp_return": p.exp_return,
             "status": p.status, "actual_return": p.actual_return,
             "dir_hit": p.dir_hit, "band_hit": p.band_hit,
-            "miss_reason": p.miss_reason,
+            "miss_reason": p.miss_reason, "winrate": p.backtest_winrate,
         } for p in rows]
 
 
