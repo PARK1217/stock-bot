@@ -25,6 +25,8 @@
   .mtab.on{color:#fff;background:var(--accent);border-color:var(--accent)}
   .schip{background:#222834;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer}
   .schip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .htab{flex:1;background:#11141a;border:1px solid var(--line);color:var(--mut);border-radius:9px;padding:7px;font-size:12px;font-weight:600;cursor:pointer}
+  .htab.on{color:#fff;background:var(--accent);border-color:var(--accent)}
   .wrap{padding:14px;display:grid;gap:14px;grid-template-columns:1fr;max-width:1100px;margin:0 auto;
     padding-bottom:calc(24px + env(safe-area-inset-bottom))}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
@@ -84,6 +86,12 @@
     <div style="display:flex;gap:6px;padding:10px 14px 4px">
       <button class="mtab on" data-m="us" onclick="opTab('us')">🇺🇸 미국장</button>
       <button class="mtab" data-m="kr" onclick="opTab('kr')">🇰🇷 한국장</button>
+    </div>
+    <div style="display:flex;gap:6px;padding:4px 14px">
+      <button class="htab on" data-h="all" onclick="opHz('all')">전체</button>
+      <button class="htab" data-h="7" onclick="opHz('7')">7일</button>
+      <button class="htab" data-h="14" onclick="opHz('14')">14일</button>
+      <button class="htab" data-h="21" onclick="opHz('21')">21일</button>
     </div>
     <div style="display:flex;gap:6px;padding:2px 14px 8px;flex-wrap:wrap;align-items:center">
       <span class="mut" style="font-size:11px">정렬(복수 선택 가능):</span>
@@ -160,7 +168,7 @@ async function loadVerify(){
   OPDATA={us:op.filter(p=>!isKR(p.symbol)), kr:op.filter(p=>isKR(p.symbol))};
   renderOp();
 }
-let OPDATA={us:[],kr:[]}, OPMKT='us', OPSORT=['expval'];
+let OPDATA={us:[],kr:[]}, OPMKT='us', OPSORT=['expval'], OPHZ='all';
 const SORTF={                                            // 정렬 기준값 (전부 내림차순)
   expval:p=>(p.prob_up||0)*(p.exp_return||0),           // 기대값
   winrate:p=>p.winrate==null?-1:p.winrate,              // 신뢰도(없으면 맨 아래)
@@ -175,6 +183,7 @@ function opCmp(a,b){                                     // 선택순=우선순�
   return 0;
 }
 function opTab(m){OPMKT=m;document.querySelectorAll('.mtab').forEach(b=>b.classList.toggle('on',b.dataset.m===m));renderOp();}
+function opHz(h){OPHZ=h;document.querySelectorAll('.htab').forEach(b=>b.classList.toggle('on',b.dataset.h===h));renderOp();}
 function opSort(k){
   const i=OPSORT.indexOf(k);
   if(i>=0)OPSORT.splice(i,1); else OPSORT.push(k);      // 토글 — 선택순서가 우선순위
@@ -189,7 +198,8 @@ function opRow(p){const up=p.prob_up>=0.5,xv=(p.prob_up||0)*(p.exp_return||0);
 function renderOp(){
   const arr=(OPDATA[OPMKT]||[]), lbl=OPMKT==='us'?'🇺🇸 미국장':'🇰🇷 한국장';
   let html='';
-  for(const hz of [7,14,21]){                           // 7·14·21일 그룹
+  const hzs=OPHZ==='all'?[7,14,21]:[parseInt(OPHZ)];     // 기간 토글
+  for(const hz of hzs){
     const g=arr.filter(p=>p.horizon_days===hz).sort(opCmp);
     if(!g.length)continue;
     html+=`<div class="grp"><span>${hz}일 예측</span><span class="mut" style="font-weight:400;font-size:11px">${g.length}건</span></div>`
