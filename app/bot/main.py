@@ -322,6 +322,12 @@ def cmd_forecast_all() -> None:
     made = [0]
 
     with SessionLocal() as session:
+        # 재실행/카탈업 중복 방지 — 오늘 이미 만든 (종목,기간) 예측은 건너뜀
+        today = datetime.now().date()
+        existing = {(p.symbol, p.horizon_days)
+                    for p in session.query(Prediction).filter(Prediction.status == "open").all()
+                    if p.made_at and p.made_at.date() == today}
+
         def _predict(symbols, getc, market):
             for symbol in symbols:
                 try:
@@ -331,10 +337,13 @@ def cmd_forecast_all() -> None:
                     tilt = _technical_tilt(closes)
                     sent = news.tilt(symbol, market)
                     for hz in HORIZONS:             # 7·14·21영업일 동시 예측 → 단기부터 빠르게 검증
+                        if (symbol, hz) in existing:           # 오늘 이미 예측함 → 중복 방지
+                            continue
                         fc = forecast_symbol(symbol, closes, hz,
                                              technical_tilt=tilt, news_sentiment=sent)
                         if fc is None:
                             continue
+                        existing.add((symbol, hz))             # 같은 실행 내 중복도 차단
                         session.add(Prediction(
                             symbol=symbol, horizon_days=hz, base_price=fc.last,
                             prob_up=fc.prob_up, exp_return=fc.exp_return,
