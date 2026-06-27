@@ -322,7 +322,7 @@ async function loadIssues(){
     return `<div class="grp"><span>${dt}</span><span class="mut" style="font-weight:400;font-size:11px">${items.length}종 · <span class="up">🟢${pos}</span> <span class="down">🔴${neg}</span></span></div>`
       +items.map(x=>{
         return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${x.symbol}</span>${nm(x.symbol)} ${polTag(x.polarity)}${impTag(x.impact)}<span class="mut" style="font-size:10.5px">${esc(x.session||'')}</span></div>
-          ${x.summary?`<div class="row-s" style="white-space:normal;line-height:1.45">${esc(x.summary.slice(0,150))}</div>`:''}</div>
+          ${x.summary?`<div class="row-s" style="white-space:normal;line-height:1.45">${esc(x.summary.slice(0,200))}</div>`:''}</div>
           <div class="row-r"><div class="v num ${cls(x.ret_5d)}">${trend(x.ret_5d)}</div><div class="v2 mut">1주추세 · 감성 ${(x.score>=0?'+':'')+(+x.score).toFixed(2)}</div></div></div>`;}).join('');
   }).join('');
 }

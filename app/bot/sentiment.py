@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 
 import httpx
@@ -154,11 +155,12 @@ def _openai_chat(base_url: str, key: str, model: str,
     return None
 
 
-def _llm_chat(prompt: str, max_tokens: int = 300) -> str | None:
-    """관련성·요약용 LLM. Groq 우선 → 실패 시 Mistral 폴백."""
+def _llm_chat(prompt: str, max_tokens: int = 300, model: str | None = None) -> str | None:
+    """관련성·요약용 LLM. Groq 우선 → 실패 시 Mistral 폴백.
+    model 미지정 시 관련성용 경량모델(groq_news_model). 요약은 더 강한 모델 전달."""
     if settings.groq_api_key:
         out = _openai_chat(settings.groq_base_url, settings.groq_api_key,
-                           settings.groq_news_model, prompt, max_tokens, retry_rl=False)
+                           model or settings.groq_news_model, prompt, max_tokens, retry_rl=False)
         if out is not None:
             return out
         log.warning("Groq 실패 → Mistral 폴백")
@@ -211,14 +213,18 @@ def groq_summary(symbol: str, headlines: list[str]) -> str:
         return ""
     joined = "\n".join(f"- {h}" for h in headlines[:10])
     txt = _llm_chat(
-        f"{symbol} 관련 최근 영어 뉴스 헤드라인이다. 투자자가 알아야 할 '구체적이고 주목할 만한 이슈'"
-        f"(실적·신제품·계약·규제·인수합병·급등락 사유 등)가 있으면 한국어로 요약하라.\n"
-        f"규칙: ①자연스럽고 매끄러운 한국어 1~2문장으로 끝까지 완결되게(중간에 끊지 말 것). "
-        f"②반드시 순한글만 — 한자(漢字)·중국어·일본어 글자 절대 금지(예: 美→미국, 中→중국, 日→일본, 株→주식). "
-        f"③직역투 말고 한국 경제뉴스처럼 자연스럽게. ④마크다운·특수기호·따옴표 없이 평문.\n"
-        f"단순 시세언급·반복·홍보이거나 별다른 이슈가 없으면 정확히 'NONE'이라고만 답하라:\n{joined}", 260)
+        f"{symbol} 관련 영어 뉴스 헤드라인이다. 투자자가 알아야 할 핵심 이슈(실적·신제품·계약·규제·"
+        f"인수합병·급등락 사유 등) 한 가지를 자연스러운 한국어 한 문장으로만 요약하라.\n"
+        f"규칙: ①헤드라인을 나열하거나 그대로 번역하지 말 것 — 핵심만 매끄러운 경제뉴스 문장으로. "
+        f"②한 문장으로 완결(중간에 끊지 말 것). ③순한글만(한자·중국어·일본어 금지: 美→미국, 株→주식). "
+        f"④마크다운·기호·따옴표 없이 평문. ⑤주목할 이슈가 없거나 단순 시세·홍보뿐이면 정확히 'NONE'만 답하라.\n{joined}",
+        300, model=settings.groq_summary_model)
     out = (txt or "").strip().strip('"').strip("'")
     if (not out or out.upper().startswith("NONE")
             or "특이사항 없" in out or "별다른 이슈" in out or "특별한 이슈" in out):
         return ""                                     # 이슈 없음 → 빈값(프론트서 숨김)
-    return _trim_sentence(_to_hangul(out))
+    out = _to_hangul(out)
+    out = re.sub(r"[_*`#]", " ", out)                 # 밑줄·마크다운 잔여 제거
+    out = re.sub(r"[㐀-鿿]", "", out)         # 남은 한자(CJK) 제거(고유명사 깨짐 방지)
+    out = re.sub(r"\s{2,}", " ", out).strip()
+    return _trim_sentence(out)

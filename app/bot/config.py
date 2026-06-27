@@ -55,8 +55,10 @@ class Settings(BaseSettings):
     hf_finbert_model: str = "ProsusAI/finbert"
     groq_api_key: str = ""                # Groq 무료 API (관련성 필터·요약)
     groq_model: str = "llama-3.3-70b-versatile"
-    # 뉴스 요약·관련성은 가벼운 작업 → 8b(일일한도 5배·별도 풀)로 70b 한도 절약·지연 방지
+    # 뉴스 관련성 필터는 가벼운 작업 → 8b(일일한도 5배). 요약은 8b가 너무 약하고(헤드라인 나열·
+    # NONE 남발) gpt-oss-20b는 영어에코·추론토큰 잘림 → 70b가 가장 깨끗(2h캐시+Mistral폴백으로 한도관리).
     groq_news_model: str = "llama-3.1-8b-instant"
+    groq_summary_model: str = "llama-3.3-70b-versatile"
     groq_base_url: str = "https://api.groq.com/openai/v1"
     mistral_api_key: str = ""             # 폴백 LLM(Groq 장애 대비)
     mistral_model: str = "mistral-small-latest"
