@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from bot.accounts import account_registry, kr_data_account
 from bot.brokers import get_broker
+from bot.glossary import BEGINNER_RULE
 from bot.config import settings
 from bot.storage.db import SessionLocal, init_db
 from bot.storage.models import Prediction, Proposal, DailySnapshot, PaperSnapshot, OrderLog
@@ -883,10 +884,7 @@ def chat(body: dict):
     prompt = (
         "너는 'stock-bot'의 한국어 투자 분석 어시스턴트다. 아래 [현재 데이터]만을 근거로 "
         "사용자의 실제 포트폴리오를 분석한다. 규칙:\n"
-        "0) [주린이 모드·최우선] 사용자는 투자 완전초보다. 어려운 용어(MDD·샤프·IC·정배열·"
-        "모멘텀·레버리지·리밸런싱·변동성·레짐 등)는 되도록 쓰지 말고, 꼭 필요하면 바로 옆 "
-        "괄호에 쉬운 말 풀이를 붙여라(예: '최대낙폭(한때 가장 많이 빠진 폭)'). 중학생도 "
-        "이해할 눈높이로, 비유와 '예: 100만원이면…' 숫자 예시를 곁들여 친절히 설명한다.\n"
+        f"0) [주린이 모드·최우선] {BEGINNER_RULE}\n"   # 용어 풀이 정책 단일 출처(glossary)
         "1) 매수/매도 의견은 반드시 데이터 근거와 함께. 데이터에 없는 사실은 지어내지 말고 모른다고 한다.\n"
         "2) 스크리너 점수는 매수신호가 아님(신뢰도 참고). 계좌 매매제약을 꼭 반영.\n"
         "3) 단정/보장 금지. '참고이며 최종 결정과 책임은 본인'임을 의식하되 매 답변에 길게 면책 달지 말 것.\n"
