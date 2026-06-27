@@ -6,7 +6,7 @@
 <title>스탁봇</title>
 <!-- PWA: 홈 화면에 앱으로 설치 -->
 <link rel="manifest" href="/assets/manifest.webmanifest">
-<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#0b0d12">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="스탁봇">
@@ -14,16 +14,18 @@
 <link rel="icon" type="image/png" href="/assets/icon-192.png">
 <script>if('serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}))}</script>
 <style>
-  :root{--bg:#0f1115;--card:#1a1d24;--line:#2a2f3a;--fg:#e6e9ef;--mut:#8b93a3;
-        --up:#27c281;--down:#ff5c6c;--accent:#4c8dff;--warn:#ffb454;--gold:#e0b257;}
+  :root{--bg:#0b0d12;--card:#151922;--card2:#1b2028;--line:#252b37;--line2:#323a48;
+        --fg:#e9ecf3;--mut:#888fa1;--up:#2ed398;--down:#ff5d6c;--accent:#5b8cf6;
+        --accent-bg:#1b2640;--warn:#ffb454;--gold:#e0b257;--chip:#202632;}
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--fg);font-size:14px;-webkit-text-size-adjust:100%;
-    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  body{margin:0;background:var(--bg);color:var(--fg);font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%;
+    -webkit-font-smoothing:antialiased;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
   .mut{color:var(--mut)} .up{color:var(--up)} .down{color:var(--down)}
   .num{font-variant-numeric:tabular-nums}
+  ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#2c3340;border-radius:4px}
 
   /* 헤더 */
-  .topbar{position:sticky;top:0;z-index:6;background:rgba(15,17,21,.96);backdrop-filter:blur(8px);
+  .topbar{position:sticky;top:0;z-index:6;background:rgba(11,13,18,.85);backdrop-filter:blur(14px);
     border-bottom:1px solid var(--line)}
   header{padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top))}
   .h-top{display:flex;align-items:center;gap:10px}
@@ -32,15 +34,16 @@
   .h-tot .v{font-size:19px;font-weight:700}
   .h-tot .r{font-size:12px}
   .h-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px;font-size:11px}
-  .badge{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:2px 8px;color:var(--mut)}
+  .badge{background:var(--card);border:1px solid var(--line);border-radius:7px;padding:2px 9px;color:var(--mut)}
   .live{color:var(--up)} .live::before{content:"● ";animation:bl 2s infinite}
   @keyframes bl{50%{opacity:.3}}
   .ses{padding:2px 8px;border-radius:10px;font-weight:600}
   .s-reg{background:#173a2c;color:#27c281} .s-pre{background:#3a3417;color:#ffd454}
   .s-aft{background:#3a2a17;color:#ffb454} .s-day{background:#17283a;color:#6fb3ff}
   .s-off{background:#262a33;color:#8b93a3}
-  .icon-btn{background:#222834;color:var(--fg);border:1px solid var(--line);
-    border-radius:8px;padding:4px 11px;cursor:pointer;font-size:13px;font-weight:600}
+  .icon-btn{background:var(--chip);color:var(--fg);border:1px solid var(--line);
+    border-radius:9px;padding:5px 12px;cursor:pointer;font-size:13px;font-weight:600;transition:.15s}
+  .icon-btn:hover{border-color:var(--line2)}
   .icon-btn:active{transform:scale(.94)}
   .h-meta .icon-btn{padding:3px 10px;font-size:12px}
   .h-meta .icon-btn:first-of-type{margin-left:auto}
@@ -49,18 +52,19 @@
   .wrap{padding:14px;display:grid;gap:14px;grid-template-columns:1fr;max-width:1180px;margin:0 auto;
     padding-bottom:calc(24px + env(safe-area-inset-bottom))}
   @media(min-width:880px){.wrap{grid-template-columns:1fr 1fr}.span2{grid-column:1/-1}}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
-  .card>h2{font-size:13.5px;margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
-    display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:600}
-  .card>h2 .sub{font-size:11.5px;font-weight:400;color:var(--mut);text-align:right}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .card>h2{font-size:14px;margin:0;padding:14px 16px;border-bottom:1px solid var(--line);letter-spacing:-.2px;
+    display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700}
+  .card>h2 .sub{font-size:11.5px;font-weight:500;color:var(--mut);text-align:right}
   .sub .seg{display:inline-block;margin-left:8px}
-  .sub-h{padding:8px 14px;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--mut);
-    display:flex;justify-content:space-between;align-items:center;gap:8px;background:#15181e}
+  .sub-h{padding:9px 16px;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--mut);
+    display:flex;justify-content:space-between;align-items:center;gap:8px;background:#11151c}
 
   /* 리스트 행(종목/예측/제안 공통) */
   .row{display:flex;justify-content:space-between;align-items:center;gap:10px;
-    padding:10px 14px;border-bottom:1px solid var(--line)}
+    padding:11px 16px;border-bottom:1px solid var(--line);transition:background .15s}
   .row:last-child{border-bottom:none}
+  .row:hover{background:#171c25}
   .row-l{min-width:0;flex:1}
   .row-t{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .row-s{font-size:12px;color:var(--mut);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -69,7 +73,7 @@
   .row-r .v2{font-size:12px;margin-top:2px}
   .sym{font-weight:700;letter-spacing:.2px}
   .nm{font-weight:400;color:var(--mut);font-size:12.5px;overflow:hidden;text-overflow:ellipsis}
-  .tag{font-size:10.5px;padding:1px 6px;border-radius:5px;background:#222834;color:var(--mut);font-weight:600}
+  .tag{font-size:10.5px;padding:2px 7px;border-radius:6px;background:var(--chip);color:var(--mut);font-weight:600}
   .tag.us{background:#173a2c;color:var(--up)} .tag.kr{background:#17283a;color:#6fb3ff}
   .tag.hold{background:#3a2c17;color:var(--gold)} .tag.al{background:#1f3326;color:#5fd6a0}
   .tag.buy{background:#173a2c;color:var(--up)} .tag.sell{background:#3a1a1f;color:var(--down)}
@@ -121,8 +125,9 @@
     font-weight:600;cursor:pointer;font-size:13.5px} .chat-input button:disabled{opacity:.5}
   .tabs{display:flex;gap:6px;padding:0 14px 10px;max-width:1180px;margin:0 auto}
   .tab{flex:1;background:var(--card);border:1px solid var(--line);color:var(--mut);
-    border-radius:10px;padding:10px 8px;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap}
-  .tab.on{color:#fff;background:var(--accent);border-color:var(--accent)}
+    border-radius:11px;padding:11px 8px;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.15s}
+  .tab:hover{color:var(--fg)}
+  .tab.on{color:#fff;background:var(--accent);border-color:var(--accent);box-shadow:0 4px 14px -4px var(--accent)}
   .tab:active{transform:scale(.97)}
   .user-tog{display:inline-flex;gap:3px;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:2px}
   .user-btn{background:transparent;border:0;color:var(--mut);border-radius:7px;padding:5px 12px;font-size:13px;font-weight:600;cursor:pointer}
@@ -537,13 +542,27 @@ async function loadNews(){
   document.getElementById('news-st').textContent='로딩…';
   const d=await j('/api/news?symbols='+syms.join(','));
   if(!d){document.getElementById('news-st').textContent='실패';return}
-  window.NEWS=d; renderNews();
+  window.NEWS=d; renderNews(); refreshLive();
 }
 function polBadge(p,score){
   const pol=p||(score>=0.15?'긍정':score<=-0.15?'부정':'중립');   // 구버전 캐시 폴백
   if(pol==='긍정')return ' <span class="tag" style="background:#173a2c;color:var(--up)">🟢긍정</span>';
   if(pol==='부정')return ' <span class="tag" style="background:#3a1a1f;color:var(--down)">🔴부정</span>';
   return ' <span class="tag" style="color:var(--mut)">⚪중립</span>';
+}
+function impBadge(imp){                                            // 이슈 vs 실제 주가반응
+  if(!imp)return '';
+  if(imp.includes('역행')||imp.includes('소화'))return ` <span class="tag" style="background:#3a2c17;color:var(--warn)">⚠️${imp}</span>`;
+  if(imp.includes('상승'))return ` <span class="tag" style="background:#173a2c;color:var(--up)">📈${imp}</span>`;
+  if(imp.includes('하락'))return ` <span class="tag" style="background:#3a1a1f;color:var(--down)">📉${imp}</span>`;
+  return ` <span class="tag" style="color:var(--mut)">${imp}</span>`;
+}
+function jsImpact(pol,ret){                                        // news.issue_impact 동일 규칙(JS)
+  if(ret==null)return '';
+  const up=ret>=1.0, down=ret<=-1.0;
+  if(pol==='긍정')return up?'반영(상승중)':down?'역행(하락중)':'아직잠잠';
+  if(pol==='부정')return down?'반영(하락중)':up?'소화(상승중)':'아직잠잠';
+  return up?'상승추세':down?'하락추세':'횡보';
 }
 function renderNews(){
   const d=window.NEWS; if(!d)return; const held=heldSyms();
@@ -556,11 +575,29 @@ function renderNews(){
   const st=document.getElementById('news-st'), box=document.getElementById('news');
   if(!items.length){box.innerHTML='<div class="empty">지금은 특별히 요약할 이슈가 없어요 👍</div>';st.textContent='이슈 없음';return;}
   st.textContent=items.length+'건';
+  const Q=window.QUOTES||{};
   box.innerHTML=items.map(n=>{
     const c=n.score>0.05?'up':(n.score<-0.05?'down':'mut');
     const big=(retOf[n.symbol]||0)>=10;                                       // 한달 +10%↑ = 급등
-    return `<div class="news-i"><span class="${c}">●</span> <span class="sym">${n.symbol}</span>${nmTag(n.symbol)}${polBadge(n.polarity,n.score)}${held.has(n.symbol)?' <span class="tag hold">보유</span>':''}${big?' <span class="tag" style="background:#3a2c17;color:var(--warn)">급등</span>':''}${n.sources?` <span class="mut" style="font-size:10px">·${n.sources}건 언급</span>`:''}
+    const pol=n.polarity||(n.score>=0.15?'긍정':n.score<=-0.15?'부정':'중립');
+    const px=Q[n.symbol];                                                     // 현재가(실시간)
+    let day=n.ret_1d, wk=n.ret_5d;                                            // 기본=배치값
+    if(px&&n.base1)day=(px/n.base1-1)*100;                                    // 현재가로 재계산
+    if(px&&n.base5)wk=(px/n.base5-1)*100;
+    const imp=jsImpact(pol,day);                                             // 영향=당일 움직임 기준(실시간)
+    const tr=(day!=null)?` <span class="${day>=0?'up':'down'}" style="font-size:10.5px">오늘 ${day>=0?'+':''}${(+day).toFixed(1)}%${wk!=null?` · 1주 ${wk>=0?'+':''}${(+wk).toFixed(1)}%`:''}</span>`:'';
+    const live=px?' <span class="mut" title="실시간 갱신" style="font-size:9px">⟳</span>':'';
+    return `<div class="news-i"><span class="${c}">●</span> <span class="sym">${n.symbol}</span>${nmTag(n.symbol)}${polBadge(pol)}${impBadge(imp)}${tr}${live}${held.has(n.symbol)?' <span class="tag hold">보유</span>':''}${big?' <span class="tag" style="background:#3a2c17;color:var(--warn)">급등</span>':''}${n.sources?` <span class="mut" style="font-size:10px">·${n.sources}건 언급</span>`:''}
       <span class="mut"> — ${md(n.summary||'-')}</span></div>`;}).join('');
+}
+async function refreshLive(){                                       // 이슈 종목 현재가 → 영향·추세 10~12초 갱신
+  const d=window.NEWS; if(!d||!d.length)return;
+  const ok=s=>{const x=(s||'').trim();return x.length>=8 && x!=='없음' && !x.includes('조회 오류')
+    && !x.includes('뉴스 미적용') && !x.includes('거시주도') && !x.includes('룩스루') && !x.includes('관련기사');};
+  const syms=[...new Set(d.filter(n=>ok(n.summary)&&(n.sources||0)>0).map(n=>n.symbol))];
+  if(!syms.length)return;
+  const q=await j('/api/quotes?symbols='+encodeURIComponent(syms.join(',')));
+  if(q&&Object.keys(q).length){window.QUOTES=Object.assign(window.QUOTES||{},q);renderNews();}
 }
 
 // ---------- 리밸런싱 제안 ----------
