@@ -208,23 +208,27 @@ def _trim_sentence(s: str, n: int = 220) -> str:
 
 
 def groq_summary(symbol: str, headlines: list[str]) -> str:
-    """주목할 이슈가 있으면 자연스러운 한국어 1~2문장 요약, 없으면 빈 문자열(화면서 숨김)."""
+    """핵심 '신호 키워드'를 가운뎃점(·)으로 구분해 한 줄로 추출. 긴 요약문이 아니라
+    호재/악재를 한눈에 보여주는 단어 위주(예: '2분기 실적 부진 · 주가 5% 급락').
+    주목할 신호 없으면 빈 문자열(화면서 숨김)."""
     if not (settings.groq_api_key or settings.mistral_api_key) or not headlines:
         return ""
     joined = "\n".join(f"- {h}" for h in headlines[:10])
     txt = _llm_chat(
-        f"{symbol} 관련 영어 뉴스 헤드라인이다. 투자자가 알아야 할 핵심 이슈(실적·신제품·계약·규제·"
-        f"인수합병·급등락 사유 등) 한 가지를 자연스러운 한국어 한 문장으로만 요약하라.\n"
-        f"규칙: ①헤드라인을 나열하거나 그대로 번역하지 말 것 — 핵심만 매끄러운 경제뉴스 문장으로. "
-        f"②한 문장으로 완결(중간에 끊지 말 것). ③순한글만(한자·중국어·일본어 금지: 美→미국, 株→주식). "
-        f"④마크다운·기호·따옴표 없이 평문. ⑤주목할 이슈가 없거나 단순 시세·홍보뿐이면 정확히 'NONE'만 답하라.\n{joined}",
-        300, model=settings.groq_summary_model)
+        f"{symbol} 관련 영어 뉴스 헤드라인이다. 이 종목의 핵심 '신호 키워드'를 한국어로 2~4개 뽑아 "
+        f"가운뎃점(·)으로 구분해 한 줄로만 답하라.\n"
+        f"규칙: ①긴 설명·문장 금지 — 짧은 키워드/구만(예: '2분기 실적 부진 · 주가 5% 급락', "
+        f"'월배당 인상 · 신고가'). ②호재면 호재 단어(상승·최고치·수요증가·인상 등), 악재면 악재 단어"
+        f"(급락·부진·하향·매도세 등)를 분명히 담아라. ③순한글만(한자·중국어·일본어 금지). "
+        f"④마크다운·따옴표 없이. ⑤단순 시세·홍보뿐이거나 주목할 신호 없으면 정확히 'NONE'만.\n{joined}",
+        120, model=settings.groq_summary_model)
     out = (txt or "").strip().strip('"').strip("'")
     if (not out or out.upper().startswith("NONE")
             or "특이사항 없" in out or "별다른 이슈" in out or "특별한 이슈" in out):
-        return ""                                     # 이슈 없음 → 빈값(프론트서 숨김)
+        return ""                                     # 신호 없음 → 빈값(프론트서 숨김)
     out = _to_hangul(out)
     out = re.sub(r"[_*`#]", " ", out)                 # 밑줄·마크다운 잔여 제거
     out = re.sub(r"[㐀-鿿]", "", out)         # 남은 한자(CJK) 제거(고유명사 깨짐 방지)
-    out = re.sub(r"\s{2,}", " ", out).strip()
-    return _trim_sentence(out)
+    out = re.sub(r"[•\-▪]\s*", "· ", out)             # 불릿류 → 가운뎃점 통일
+    out = re.sub(r"\s{2,}", " ", out).strip(" ·\n")
+    return out[:140]
