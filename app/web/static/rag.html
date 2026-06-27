@@ -23,6 +23,8 @@
   .tab.on{color:#fff;background:var(--accent);border-color:var(--accent)}
   .mtab{flex:1;background:#11141a;border:1px solid var(--line);color:var(--mut);border-radius:9px;padding:8px;font-size:12.5px;font-weight:600;cursor:pointer}
   .mtab.on{color:#fff;background:var(--accent);border-color:var(--accent)}
+  .schip{background:#222834;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer}
+  .schip.on{background:var(--accent);border-color:var(--accent);color:#fff}
   .wrap{padding:14px;display:grid;gap:14px;grid-template-columns:1fr;max-width:1100px;margin:0 auto;
     padding-bottom:calc(24px + env(safe-area-inset-bottom))}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
@@ -82,6 +84,13 @@
     <div style="display:flex;gap:6px;padding:10px 14px 4px">
       <button class="mtab on" data-m="us" onclick="opTab('us')">🇺🇸 미국장</button>
       <button class="mtab" data-m="kr" onclick="opTab('kr')">🇰🇷 한국장</button>
+    </div>
+    <div style="display:flex;gap:6px;padding:2px 14px 8px;flex-wrap:wrap;align-items:center">
+      <span class="mut" style="font-size:11px">정렬(복수 선택 가능):</span>
+      <button class="schip on" data-s="expval" onclick="opSort('expval')">기대값</button>
+      <button class="schip" data-s="winrate" onclick="opSort('winrate')">신뢰도</button>
+      <button class="schip" data-s="prob_up" onclick="opSort('prob_up')">상승확률</button>
+      <button class="schip" data-s="exp_return" onclick="opSort('exp_return')">기대수익</button>
     </div>
     <div id="vf-op"><div class="empty">로딩…</div></div>
   </div>
@@ -151,17 +160,42 @@ async function loadVerify(){
   OPDATA={us:op.filter(p=>!isKR(p.symbol)), kr:op.filter(p=>isKR(p.symbol))};
   renderOp();
 }
-let OPDATA={us:[],kr:[]}, OPMKT='us';
+let OPDATA={us:[],kr:[]}, OPMKT='us', OPSORT=['expval'];
+const SORTF={                                            // 정렬 기준값 (전부 내림차순)
+  expval:p=>(p.prob_up||0)*(p.exp_return||0),           // 기대값
+  winrate:p=>p.winrate==null?-1:p.winrate,              // 신뢰도(없으면 맨 아래)
+  prob_up:p=>p.prob_up||0,                              // 상승확률
+  exp_return:p=>p.exp_return||0,                        // 기대수익
+};
+function opCmp(a,b){                                     // 선택순=우선순위 다중정렬
+  for(const k of (OPSORT.length?OPSORT:['expval'])){
+    const d=SORTF[k](b)-SORTF[k](a);
+    if(Math.abs(d)>1e-9)return d;
+  }
+  return 0;
+}
 function opTab(m){OPMKT=m;document.querySelectorAll('.mtab').forEach(b=>b.classList.toggle('on',b.dataset.m===m));renderOp();}
+function opSort(k){
+  const i=OPSORT.indexOf(k);
+  if(i>=0)OPSORT.splice(i,1); else OPSORT.push(k);      // 토글 — 선택순서가 우선순위
+  if(!OPSORT.length)OPSORT=['expval'];                  // 최소 1개 유지
+  document.querySelectorAll('.schip').forEach(b=>b.classList.toggle('on',OPSORT.includes(b.dataset.s)));
+  renderOp();
+}
+function opRow(p){const up=p.prob_up>=0.5,xv=(p.prob_up||0)*(p.exp_return||0);
+  return `<div class="row" style="opacity:.95"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)}</div>
+    <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b class="${up?'up':'down'}">${up?'▲상승':'▼하락'}</b> · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span> · 상승확률 ${Math.round(p.prob_up*100)}% · ${p.winrate!=null?`<span title="이런 예측이 과거에 맞은 비율">신뢰도 ${Math.round(p.winrate*100)}%</span>`:`<span class="mut" title="백테스트 표본 부족 — 아직 신뢰도 미산출">신뢰도 —(표본부족)</span>`}</div></div>
+    <div class="row-r"><div class="v num ${xv>=0?'up':'down'}">${(xv>=0?'+':'')+xv.toFixed(1)}</div><div class="v2 mut">기대값</div></div></div>`;}
 function renderOp(){
-  const expVal=p=>(p.prob_up||0)*(p.exp_return||0);      // 기대값(상승확률×기대수익) 순
-  const arr=(OPDATA[OPMKT]||[]).slice().sort((a,b)=>expVal(b)-expVal(a));
-  const lbl=OPMKT==='us'?'🇺🇸 미국장':'🇰🇷 한국장';
-  $('vf-op').innerHTML=arr.length?arr.slice(0,200).map(p=>{const up=p.prob_up>=0.5,xv=expVal(p);
-    return `<div class="row" style="opacity:.95"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)} <span class="tag">${p.horizon_days}일</span></div>
-      <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b class="${up?'up':'down'}">${up?'▲상승':'▼하락'}</b> · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span> · 상승확률 ${Math.round(p.prob_up*100)}% · ${p.winrate!=null?`<span title="이런 예측이 과거에 맞은 비율">신뢰도 ${Math.round(p.winrate*100)}%</span>`:`<span class="mut" title="백테스트 표본 부족 — 아직 신뢰도 미산출">신뢰도 —(표본부족)</span>`}</div></div>
-      <div class="row-r"><div class="v num ${xv>=0?'up':'down'}">${(xv>=0?'+':'')+xv.toFixed(1)}</div><div class="v2 mut">기대값</div></div></div>`;}).join('')
-    :`<div class="empty">${lbl} 진행 중 예측 없음</div>`;
+  const arr=(OPDATA[OPMKT]||[]), lbl=OPMKT==='us'?'🇺🇸 미국장':'🇰🇷 한국장';
+  let html='';
+  for(const hz of [7,14,21]){                           // 7·14·21일 그룹
+    const g=arr.filter(p=>p.horizon_days===hz).sort(opCmp);
+    if(!g.length)continue;
+    html+=`<div class="grp"><span>${hz}일 예측</span><span class="mut" style="font-weight:400;font-size:11px">${g.length}건</span></div>`
+      +g.slice(0,120).map(opRow).join('');
+  }
+  $('vf-op').innerHTML=html||`<div class="empty">${lbl} 진행 중 예측 없음</div>`;
 }
 async function loadChat(){
   const d=await j('/api/chateval'); if(!d){$('ce-st').textContent='실패';return;}
