@@ -311,6 +311,10 @@ function impTag(imp){
   return ` <span class="tag">${imp}</span>`;   // 횡보·아직잠잠 = 영향 거의 없음
 }
 const trend=v=>v==null?'—':(v>=0?'+':'')+(+v).toFixed(1)+'%';
+function rvolBadge(rv){
+  if(rv==null||rv<1.5)return '';
+  return ` <span class="tag" style="background:#3a2c17;color:var(--warn)" title="평소(20일평균) 대비 거래량">🔥거래량 ${(+rv).toFixed(1)}배</span>`;
+}
 function kwChips(s,pol){                                 // 핵심 신호 키워드를 극성색 칩으로
   if(!s)return '';
   const cl=pol==='긍정'?'g':pol==='부정'?'b':'n';
@@ -329,7 +333,7 @@ async function loadIssues(){
     const pos=items.filter(x=>x.polarity==='긍정').length, neg=items.filter(x=>x.polarity==='부정').length;
     return `<div class="grp"><span>${dt}</span><span class="mut" style="font-weight:400;font-size:11px">${items.length}종 · <span class="up">🟢${pos}</span> <span class="down">🔴${neg}</span></span></div>`
       +items.map(x=>{
-        return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${x.symbol}</span>${nm(x.symbol)} ${polTag(x.polarity)}${impTag(x.impact)}<span class="mut" style="font-size:10.5px">${esc(x.session||'')}</span></div>
+        return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${x.symbol}</span>${nm(x.symbol)} ${polTag(x.polarity)}${impTag(x.impact)}${rvolBadge(x.rvol)}<span class="mut" style="font-size:10.5px">${esc(x.session||'')}</span></div>
           ${x.summary?`<div style="margin-top:1px">${kwChips(x.summary,x.polarity)}</div>`:''}</div>
           <div class="row-r"><div class="v num ${cls(x.ret_5d)}">${trend(x.ret_5d)}</div><div class="v2 mut">1주추세 · 감성 ${(x.score>=0?'+':'')+(+x.score).toFixed(2)}</div></div></div>`;}).join('');
   }).join('');

@@ -101,6 +101,7 @@ class NewsIssue(Base):
     ret_1d: Mapped[float | None] = mapped_column(Float, nullable=True)   # 1거래일 %
     ret_5d: Mapped[float | None] = mapped_column(Float, nullable=True)   # 5거래일(≈1주) %
     impact: Mapped[str] = mapped_column(String(16), default="")          # 반영/역행/소화/횡보 등
+    rvol: Mapped[float | None] = mapped_column(Float, nullable=True)     # 상대거래량(오늘/평균)
 
 
 class Prediction(Base):

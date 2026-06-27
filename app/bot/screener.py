@@ -40,6 +40,17 @@ def volatility(closes: list[float], n: int = 20) -> float:
     return (var ** 0.5) * 100
 
 
+def rel_volume(candles: list[dict], n: int = 20) -> float | None:
+    """상대거래량(RVOL) = 최근일 거래량 / 직전 n일 평균거래량.
+    1.0=평소, 1.5↑ 활발, 2.0↑ 급증. 거래량은 '움직임의 진위'를 확인해준다. 데이터부족=None."""
+    vols = [c.get("volume", 0) for c in candles if c.get("volume", 0) > 0]
+    if len(vols) < 6:
+        return None
+    base = vols[-(n + 1):-1] if len(vols) > n else vols[:-1]
+    avg = sum(base) / len(base) if base else 0.0
+    return round(vols[-1] / avg, 2) if avg > 0 else None
+
+
 @dataclass
 class ScreenResult:
     symbol: str
@@ -50,6 +61,7 @@ class ScreenResult:
     trend_aligned: bool          # 종가>SMA20>SMA50>SMA200
     vol_20d: float
     score: float
+    rvol: float | None = None    # 상대거래량(오늘/평균)
 
     def line(self) -> str:
         def f(x):
@@ -80,7 +92,11 @@ def score_symbol(symbol: str, candles: list[dict]) -> ScreenResult | None:
     if aligned:
         score += 15
     score -= vol * 1.5
-    return ScreenResult(symbol, last, r1, r3, above200, aligned, vol, score)
+    # 거래량 확인: 상승을 거래량이 동반하면 신호 신뢰↑(가산), 상승인데 거래량 빈약하면 약한신호
+    rv = rel_volume(candles)
+    if rv is not None and (r1 or 0) > 0:
+        score += min(max(rv - 1.0, 0.0), 1.5) * 4   # RVOL 1→0, 2.5↑→최대 +6
+    return ScreenResult(symbol, last, r1, r3, above200, aligned, vol, score, rv)
 
 
 def screen(candles_by_symbol: dict[str, list[dict]]) -> list[ScreenResult]:

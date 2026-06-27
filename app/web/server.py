@@ -188,7 +188,35 @@ def issues(days: int = 14):
                     "market": r.market, "score": r.score, "polarity": r.polarity,
                     "summary": r.summary, "sources": r.sources,
                     "ret_1d": r.ret_1d, "ret_5d": r.ret_5d, "impact": r.impact,
-                    "ts": r.ts.isoformat() if r.ts else ""})
+                    "rvol": r.rvol, "ts": r.ts.isoformat() if r.ts else ""})
+    return out
+
+
+@app.get("/api/volume")
+def volume(symbols: str = Query(default="")):
+    """종목별 상대거래량(RVOL=오늘/평균). 보유종목 거래량 급증 표시용. 30분 캐시."""
+    from bot.screener import rel_volume
+    syms = [s.strip().upper() for s in symbols.split(",") if s.strip()][:40]
+    if not syms:
+        return {}
+    ck = "web:rvol:" + ",".join(sorted(syms))
+    if (c := _cache_get(ck)) is not None:
+        return c
+    from bot.brokers.kis import KISBroker
+    out, kis = {}, None
+    for s in syms:
+        try:
+            if s.isdigit():
+                kis = kis or KISBroker(account=kr_data_account(), paper=False)
+                cs = kis.get_candles(s, "1d", 25)
+            else:
+                cs = get_broker().get_candles(s, "1d", 25)
+            rv = rel_volume(cs)
+            if rv is not None:
+                out[s] = rv
+        except Exception:  # noqa: BLE001
+            pass
+    _cache_set(ck, out, 1800)
     return out
 
 
@@ -379,7 +407,7 @@ def screen(refresh: bool = False, market: str = "us", kind: str = "etf"):
         "symbol": r.symbol, "score": round(r.score, 1), "last": r.last,
         "ret_1m": r.ret_1m, "ret_3m": r.ret_3m, "above_sma200": r.above_sma200,
         "trend_aligned": r.trend_aligned, "vol_20d": round(r.vol_20d, 2),
-        "forecast": preds.get(r.symbol),
+        "rvol": r.rvol, "forecast": preds.get(r.symbol),
     } for r in results]
     _cache_set(key, out, 3600)
     return out

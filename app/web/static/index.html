@@ -415,13 +415,19 @@ async function loadPortfolio(){
   ST.pos=(d.positions||[]).sort((a,b)=>b.value_krw-a.value_krw);
   learnNames(ST.pos);
   document.getElementById('meta').textContent=`USDKRW ${Math.round(d.fx).toLocaleString()} · 현금 ${won(d.cash)}`;
-  renderPortfolio();
+  renderPortfolio(); loadVolume();
+}
+async function loadVolume(){                            // 보유종목 상대거래량(급증 표시)
+  const syms=[...new Set([...(ST.pos||[]).map(p=>p.symbol), ...((KIST.data&&KIST.data.positions||[]).map(p=>p.symbol))])].filter(Boolean);
+  if(!syms.length)return;
+  const q=await j('/api/volume?symbols='+encodeURIComponent(syms.join(',')));
+  if(q&&Object.keys(q).length){window.RVOL=Object.assign(window.RVOL||{},q); renderPortfolio(); if(KIST.data)renderKis();}
 }
 function vkrw(p){return p.qty*p.price*(p.currency==='USD'?ST.fx:1)}
 function posRow(p,mk){
   const vk=mk==='US'?vkrw(p):p.value_krw, pa=pnlAmt(vk,p.pnl_pct);
   return `<div class="row" data-sym="${p.symbol}">
-    <div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span> <span class="nm">${esc(p.name||'')}</span></div>
+    <div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span> <span class="nm">${esc(p.name||'')}</span>${rvolBadge((window.RVOL||{})[p.symbol])}</div>
       <div class="row-s num">${nf(p.qty,4)}주 · ${p.currency==='USD'?'$':'₩'}${nf(p.price)}</div></div>
     <div class="row-r"><div class="v ${cls(p.pnl_pct)} num">${pct(p.pnl_pct)}</div>
       <div class="v2 ${cls(p.pnl_pct)} num">${samt(pa)}</div>
@@ -483,7 +489,7 @@ function renderScreenInto(d,elId){
     const fline=f?`<div class="row-s num" style="margin-top:4px;color:#6fb3ff">🔮 앞으로 ${f.horizon||21}일 예상: 기대 <span class="${cls(f.exp_return)}">${pct(f.exp_return)}</span> · 상승확률 ${Math.round(f.prob_up*100)}%</div>`:'';
     return `<div class="row"${h?' style="background:#1c1a14"':''}>
       <div class="row-l"><div class="row-t"><span class="sym">${r.symbol}</span>${nmTag(r.symbol)}
-        ${h?'<span class="tag hold">보유</span>':''}${r.trend_aligned?'<span class="tag al">정배열</span>':''}</div>
+        ${h?'<span class="tag hold">보유</span>':''}${r.trend_aligned?'<span class="tag al">정배열</span>':''}${rvolBadge(r.rvol)}</div>
         <div class="barwrap"><span class="bar"><i style="width:${Math.max(0,r.score/mx*100)}%"></i></span>
           <span class="mut num" style="font-size:11px">상승세 ${r.score}</span></div>${fline}</div>
       <div class="row-r"><div class="mut" style="font-size:9.5px">과거 수익</div>
@@ -557,6 +563,10 @@ function kwChips(s,pol){                                           // 핵심 신
   const cl=pol==='긍정'?'g':pol==='부정'?'b':'n';
   return s.split('·').map(w=>w.trim()).filter(Boolean).map(w=>`<span class="kw ${cl}">${esc(w)}</span>`).join('');
 }
+function rvolBadge(rv){                                            // 상대거래량 급증 배지
+  if(rv==null||rv<1.5)return '';
+  return ` <span class="tag" style="background:#3a2c17;color:var(--warn)" title="평소(20일평균) 대비 거래량">🔥거래량 ${(+rv).toFixed(1)}배</span>`;
+}
 function impBadge(imp){                                            // 이슈 vs 실제 주가반응
   if(!imp)return '';
   if(imp.includes('역행')||imp.includes('소화'))return ` <span class="tag" style="background:#3a2c17;color:var(--warn)">⚠️${imp}</span>`;
@@ -594,7 +604,7 @@ function renderNews(){
     const imp=jsImpact(pol,day);                                             // 영향=당일 움직임 기준(실시간)
     const tr=(day!=null)?` <span class="${day>=0?'up':'down'}" style="font-size:10.5px">오늘 ${day>=0?'+':''}${(+day).toFixed(1)}%${wk!=null?` · 1주 ${wk>=0?'+':''}${(+wk).toFixed(1)}%`:''}</span>`:'';
     const live=px?' <span class="mut" title="실시간 갱신" style="font-size:9px">⟳</span>':'';
-    return `<div class="news-i"><span class="${c}">●</span> <span class="sym">${n.symbol}</span>${nmTag(n.symbol)}${polBadge(pol)}${impBadge(imp)}${tr}${live}${held.has(n.symbol)?' <span class="tag hold">보유</span>':''}${big?' <span class="tag" style="background:#3a2c17;color:var(--warn)">급등</span>':''}${n.sources?` <span class="mut" style="font-size:10px">·${n.sources}건 언급</span>`:''}
+    return `<div class="news-i"><span class="${c}">●</span> <span class="sym">${n.symbol}</span>${nmTag(n.symbol)}${polBadge(pol)}${impBadge(imp)}${rvolBadge(n.rvol)}${tr}${live}${held.has(n.symbol)?' <span class="tag hold">보유</span>':''}${big?' <span class="tag" style="background:#3a2c17;color:var(--warn)">급등</span>':''}${n.sources?` <span class="mut" style="font-size:10px">·${n.sources}건 언급</span>`:''}
       <div style="margin-top:2px">${kwChips(n.summary,pol)}</div></div>`;}).join('');
 }
 async function refreshLive(){                                       // 이슈 종목 현재가 → 영향·추세 10~12초 갱신
@@ -798,7 +808,7 @@ function renderKis(){
       <span class="num"><span class="${cls(rr)}">${pct(rr)} (${samt(pa)})</span> &nbsp;<b>${amt(sub)}</b></span></div>`;
     ps.sort((a,b)=>b.value_krw-a.value_krw).forEach(p=>{
       html+=`<div class="row sub-row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>
-          <span class="nm">${esc(p.name||'')}</span></div>
+          <span class="nm">${esc(p.name||'')}</span>${rvolBadge((window.RVOL||{})[p.symbol])}</div>
           <div class="row-s num">${nf(p.qty,2)}주 · ${p.currency==='USD'?'$':'₩'}${nf(p.price)}</div></div>
         <div class="row-r"><div class="v ${cls(p.pnl_pct)} num">${pct(p.pnl_pct)}</div>
           <div class="v2 ${cls(p.pnl_pct)} num">${samt(pnlAmt(p.value_krw,p.pnl_pct))}</div>
