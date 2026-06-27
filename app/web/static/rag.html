@@ -87,6 +87,12 @@
       <button class="mtab on" data-m="us" onclick="opTab('us')">🇺🇸 미국장</button>
       <button class="mtab" data-m="kr" onclick="opTab('kr')">🇰🇷 한국장</button>
     </div>
+    <div style="display:flex;gap:8px;align-items:center;padding:6px 14px 2px">
+      <button class="schip" onclick="opDate(-1)">◀ 이전</button>
+      <span id="op-date" style="flex:1;text-align:center;font-weight:600;font-size:12.5px"></span>
+      <button class="schip" onclick="opDate(1)">다음 ▶</button>
+      <button class="schip" data-all="1" onclick="opDate(0)">전체</button>
+    </div>
     <div style="display:flex;gap:6px;padding:4px 14px">
       <button class="htab on" data-h="all" onclick="opHz('all')">전체</button>
       <button class="htab" data-h="7" onclick="opHz('7')">7일</button>
@@ -168,7 +174,23 @@ async function loadVerify(){
   OPDATA={us:op.filter(p=>!isKR(p.symbol)), kr:op.filter(p=>isKR(p.symbol))};
   renderOp();
 }
-let OPDATA={us:[],kr:[]}, OPMKT='us', OPSORT=['expval'], OPHZ='all';
+let OPDATA={us:[],kr:[]}, OPMKT='us', OPSORT=['expval'], OPHZ='all', OPDATE='';
+function opDatesList(){                                  // 현재 시장의 예측 날짜(최신순)
+  return [...new Set((OPDATA[OPMKT]||[]).map(p=>(p.made_at||'').slice(0,10)).filter(Boolean))].sort().reverse();
+}
+function relDay(ds){
+  const t=new Date(); t.setHours(0,0,0,0);
+  const diff=Math.round((t-new Date(ds+'T00:00:00'))/86400000);
+  return diff===0?'오늘':diff===1?'어제':diff===2?'그제':diff>0?`${diff}일 전`:'';
+}
+function opDate(delta){
+  const ds=opDatesList(); if(!ds.length)return;
+  if(delta===0){OPDATE=(OPDATE==='all')?ds[0]:'all';}   // 전체 토글
+  else{let i=ds.indexOf(OPDATE); if(i<0)i=0;
+    i=Math.min(ds.length-1,Math.max(0,i+(delta<0?1:-1)));// ◀이전=과거(index+1)
+    OPDATE=ds[i];}
+  renderOp();
+}
 const SORTF={                                            // 정렬 기준값 (전부 내림차순)
   expval:p=>(p.prob_up||0)*(p.exp_return||0),           // 기대값
   winrate:p=>p.winrate==null?-1:p.winrate,              // 신뢰도(없으면 맨 아래)
@@ -196,7 +218,13 @@ function opRow(p){const up=p.prob_up>=0.5,xv=(p.prob_up||0)*(p.exp_return||0);
     <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b class="${up?'up':'down'}">${up?'▲상승':'▼하락'}</b> · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span> · 상승확률 ${Math.round(p.prob_up*100)}% · ${p.winrate!=null?`<span title="이런 예측이 과거에 맞은 비율">신뢰도 ${Math.round(p.winrate*100)}%</span>`:`<span class="mut" title="백테스트 표본 부족 — 아직 신뢰도 미산출">신뢰도 —(표본부족)</span>`}</div></div>
     <div class="row-r"><div class="v num ${xv>=0?'up':'down'}">${(xv>=0?'+':'')+xv.toFixed(1)}</div><div class="v2 mut">기대값</div></div></div>`;}
 function renderOp(){
-  const arr=(OPDATA[OPMKT]||[]), lbl=OPMKT==='us'?'🇺🇸 미국장':'🇰🇷 한국장';
+  const all=(OPDATA[OPMKT]||[]), lbl=OPMKT==='us'?'🇺🇸 미국장':'🇰🇷 한국장';
+  const ds=opDatesList();
+  if(OPDATE!=='all' && !ds.includes(OPDATE)) OPDATE=ds[0]||'all';   // 초기/시장변경 보정
+  const navEl=$('op-date');
+  if(navEl) navEl.textContent = OPDATE==='all' ? '전체 날짜' : (OPDATE?`${OPDATE} · ${relDay(OPDATE)}`:'—');
+  document.querySelectorAll('.schip[data-all]').forEach(b=>b.classList.toggle('on',OPDATE==='all'));
+  const arr = OPDATE==='all' ? all : all.filter(p=>(p.made_at||'').slice(0,10)===OPDATE);
   let html='';
   const hzs=OPHZ==='all'?[7,14,21]:[parseInt(OPHZ)];     // 기간 토글
   for(const hz of hzs){
