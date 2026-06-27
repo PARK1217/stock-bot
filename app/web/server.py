@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from bot.accounts import account_registry, kr_data_account
 from bot.brokers import get_broker
 from bot.config import settings
 from bot.storage.db import SessionLocal, init_db
@@ -112,7 +113,7 @@ def portfolio(broker: str = Query(default=""), who: str = Query(default="me")):
         b = toss_spouse()
         if b is None:
             return {"error": "남편 계좌 미설정", "positions": [], "cash": 0,
-                    "total_krw": 0, "fx": 1540, "broker": "toss"}
+                    "total_krw": 0, "fx": settings.fx_fallback, "broker": "toss"}
     else:
         b = get_broker(broker or None)
     fx = b.usdkrw()
@@ -197,9 +198,8 @@ def kis_accounts():
         return c
     from bot.brokers.kis import KISBroker
     from bot.brokers.toss import TossBroker
-    fx = TossBroker().usdkrw() or 1540.0
-    accts = [("63776023", "01", "ISA", "KR"), ("63776023", "22", "연금", "KR"),
-             ("63751874", "01", "소수점", "US")]
+    fx = TossBroker().usdkrw() or settings.fx_fallback
+    accts = [(a.cano, a.prod, a.label, a.market) for a in account_registry()]
     out = {"total": 0.0, "cash_krw": 0.0, "positions": [], "fx": fx}
     for cano, prod, label, mk in accts:
         try:
@@ -238,7 +238,7 @@ def kis_accounts():
             try:
                 from bot.brokers.kis import KISBroker
                 if _kb is None:
-                    _kb = KISBroker(account=("63776023", "01"), paper=False)
+                    _kb = KISBroker(account=kr_data_account(), paper=False)
                 cs = _kb.get_candles(p["symbol"], "1d", 5)
                 prev = cs[-2]["close"] if len(cs) >= 2 else 0.0
                 if prev:
@@ -262,7 +262,7 @@ def market_status():
     out = {"kr_open": True}
     try:
         from bot.brokers.kis import KISBroker
-        k = KISBroker(account=("63776023", "01"), paper=False)
+        k = KISBroker(account=kr_data_account(), paper=False)
         today = datetime.now().strftime("%Y%m%d")
         resp = k._get("/uapi/domestic-stock/v1/quotations/chk-holiday",
                       k._headers("CTCA0903R"),
@@ -351,7 +351,7 @@ def screen(refresh: bool = False, market: str = "us", kind: str = "etf"):
                               KR_WATCHLIST, SINGLE_US, SINGLE_KR)
     if market == "kr":
         from bot.brokers.kis import KISBroker
-        b = KISBroker(account=("63776023", "01"), paper=False)   # KR 시세용
+        b = KISBroker(account=kr_data_account(), paper=False)   # KR 시세용
         wl = SINGLE_KR if kind == "single" else KR_WATCHLIST
     else:
         b = get_broker()
@@ -480,7 +480,7 @@ def paper():
     from bot.brokers.kis import KISBroker
     from bot.brokers.toss import TossBroker
     out = {"cash": 0, "total": 0, "positions": [], "history": [], "ret_pct": None}
-    fx = 1540.0
+    fx = settings.fx_fallback
     # KR·US 잔고를 독립적으로 조회 — KIS 모의 국내(inquire-balance)가 간헐 500을 내도
     # US 보유까지 통째로 0이 되지 않게 분리(한쪽 실패해도 나머지는 표시).
     kr_pos, us_pos, errs = [], [], []
@@ -488,7 +488,7 @@ def paper():
     kis = None
     try:
         kis = KISBroker(paper=True)
-        fx = TossBroker().usdkrw() or 1540.0
+        fx = TossBroker().usdkrw() or settings.fx_fallback
     except Exception as e:  # noqa: BLE001
         errs.append(f"init:{str(e)[:120]}")
     if kis is not None:
@@ -503,7 +503,7 @@ def paper():
         except Exception as e:  # noqa: BLE001
             errs.append(f"US:{str(e)[:120]}")
     if kr_pos or us_pos or not errs:
-        total = 500_000_000 + kr_pnl + us_pnl    # 초기 5억 + 손익(통합증거금 이중계산 방지)
+        total = settings.paper_initial_krw + kr_pnl + us_pnl    # 초기 5억 + 손익(통합증거금 이중계산 방지)
         out["total"] = total
         out["positions"] = [{
             "symbol": p.symbol, "name": p.name, "qty": p.qty, "market": "KR",
@@ -532,8 +532,9 @@ def paper():
         snaps = s.query(PaperSnapshot).order_by(PaperSnapshot.id.desc()).limit(90).all()
         out["history"] = [{"ts": str(x.ts), "total": x.total_eval}
                           for x in reversed(snaps)]
+    out["initial"] = settings.paper_initial_krw               # 모의 초기자본(프론트 단일 출처)
     if out["total"]:
-        out["ret_pct"] = round((out["total"] / 500_000_000 - 1) * 100, 2)  # 초기 5억
+        out["ret_pct"] = round((out["total"] / settings.paper_initial_krw - 1) * 100, 2)
     _cache_set("web:paper", out, 30 if out["total"] else 5)   # 실패 시 짧게 캐싱→빠른 회복
     return out
 
@@ -628,7 +629,7 @@ def realized_view():
         return c
     from bot import realized
     from bot.brokers.toss import TossBroker
-    fx = TossBroker().usdkrw() or 1540.0
+    fx = TossBroker().usdkrw() or settings.fx_fallback
     out = realized.report(fx, datetime.now())
     _cache_set("web:realized", out, 300)
     return out
@@ -643,14 +644,16 @@ def kis_orders(limit: int = 40):
     end = datetime.now()
     s, e = (end - timedelta(days=40)).strftime("%Y%m%d"), end.strftime("%Y%m%d")
     rows = []
-    for cano, prod, label in [("63776023", "01", "ISA"), ("63776023", "22", "연금")]:
+    for a in account_registry():
+        if a.overseas:                       # 소수점=해외계좌 → 국내주문 API 대상 아님
+            continue
         try:
-            b = KISBroker(account=(cano, prod), paper=False)
+            b = KISBroker(account=a.acct, paper=False)
             for o in b.domestic_orders(s, e):
-                o["account"] = label
+                o["account"] = a.label
                 rows.append(o)
         except Exception as ex:  # noqa: BLE001
-            log.warning("kis orders %s 실패: %s", label, ex)
+            log.warning("kis orders %s 실패: %s", a.label, ex)
     rows.sort(key=lambda x: x.get("at", ""), reverse=True)    # 최신순
     rows.sort(key=lambda x: 0 if x.get("pending") else 1)     # 대기 먼저(안정정렬)
     out = {"orders": rows[:limit]}
@@ -665,14 +668,14 @@ def paper_trades(page: int = 0, size: int = 8):
     page = max(0, page); size = min(max(size, 1), 50)
     if (c := _cache_get(f"web:ptr:{page}:{size}")):
         return c
-    fx = 1540.0
+    fx = settings.fx_fallback
     rows = []                                            # (정렬키 dt, item)
     turnover = 0.0
     seen_us = set()                                      # ccnl에 잡힌 US (종목,방향,일자) — OrderLog 중복방지
     try:
         from bot.brokers.kis import KISBroker
         from bot.brokers.toss import TossBroker
-        fx = TossBroker().usdkrw() or 1540.0
+        fx = TossBroker().usdkrw() or settings.fx_fallback
         for r in KISBroker(paper=True).overseas_orders(            # US (ccnl)
                 (datetime.now() - timedelta(days=10)).strftime("%Y%m%d"),
                 datetime.now().strftime("%Y%m%d")):

@@ -22,6 +22,7 @@ from datetime import datetime
 from apscheduler.schedulers.blocking import BlockingScheduler
 from sqlalchemy import cast, Date
 
+from bot.accounts import account_registry, kr_data_account
 from bot.brokers import get_broker
 from bot.brokers.base import Side
 from bot.config import settings
@@ -69,14 +70,13 @@ def cmd_balance_all() -> None:
     if settings.broker.lower() != "kis":
         print("balance-all은 BROKER=kis 전용. (토스는 balance)")
         return
-    labels = {("63751874", "01"): "소수점주식", ("63776023", "01"): "ISA중개형",
-              ("63776023", "22"): "연금저축"}
-    overseas = {("63751874", "01")}  # 해외계좌(국내 잔고 API 미적용)
+    reg = {a.acct: a for a in account_registry()}   # 계좌 식별 단일 출처
     g_cash = g_eval = 0.0
     lines = [f"[KIS/{_mode()}] 3계좌 통합잔고"]
     for cano, prod in settings.kis_accounts:
-        label = labels.get((cano, prod), f"{cano}-{prod}")
-        if (cano, prod) in overseas:
+        a = reg.get((cano, prod))
+        label = a.label if a else f"{cano}-{prod}"
+        if a and a.overseas:
             lines.append(f"  [{label} {cano}-{prod}] ⚠️해외계좌 — overseas 잔고 API 추후")
             continue
         try:
@@ -210,7 +210,7 @@ def cmd_news_warm(session: str = "") -> None:
     us = list(dict.fromkeys(us + DEFAULT_WATCHLIST))
     universe = [(s, "US") for s in us] + [(s, "KR") for s in KR_WATCHLIST]
     try:
-        kis = KISBroker(account=("63776023", "01"), paper=False)   # KR 일봉 시세
+        kis = KISBroker(account=kr_data_account(), paper=False)   # KR 일봉 시세
     except Exception:  # noqa: BLE001
         kis = None
 
@@ -318,7 +318,7 @@ def cmd_forecast_all() -> None:
     from bot.storage.models import Prediction
     from bot.brokers.kis import KISBroker
     us_broker, _, _ = _build()
-    kis = KISBroker(account=("63776023", "01"), paper=False)   # KR 일봉용(실전 시세)
+    kis = KISBroker(account=kr_data_account(), paper=False)   # KR 일봉용(실전 시세)
     made = [0]
 
     with SessionLocal() as session:
@@ -411,7 +411,7 @@ def cmd_accuracy() -> None:
     from bot.storage.models import Prediction
     from bot.brokers.kis import KISBroker
     broker, _, _ = _build()
-    kis = KISBroker(account=("63776023", "01"), paper=False)   # KR 종목 시세용
+    kis = KISBroker(account=kr_data_account(), paper=False)   # KR 종목 시세용
     now = datetime.now()
     with SessionLocal() as session:
         opens = session.query(Prediction).filter(Prediction.status == "open").all()
@@ -503,27 +503,25 @@ def cmd_snapshot() -> None:
     from bot.brokers.kis import KISBroker
     from bot.storage.models import AssetSnapshot
     toss = TossBroker()
-    fx = toss.usdkrw() or 1540.0
+    fx = toss.usdkrw() or settings.fx_fallback
     tb = toss.get_balance()
     toss_krw = tb.cash + sum(p.market_value_krw(fx) for p in tb.positions)
 
     isa = pension = frac = 0.0                       # 한투 계좌별 평가액
-    for cano, prod, label, mk in [("63776023", "01", "ISA", "KR"),
-                                  ("63776023", "22", "연금", "KR"),
-                                  ("63751874", "01", "소수점", "US")]:
+    for a in account_registry():
         try:
-            b = KISBroker(account=(cano, prod), paper=False)
-            bal = b.get_overseas_balance() if mk == "US" else b.get_balance()
-            v = (bal.total_eval if mk == "KR"
-                 else sum(p.market_value * fx for p in bal.positions))
-            if label == "ISA":
+            b = KISBroker(account=a.acct, paper=False)
+            bal = b.get_overseas_balance() if a.overseas else b.get_balance()
+            v = (sum(p.market_value * fx for p in bal.positions) if a.overseas
+                 else bal.total_eval)
+            if a.key == "isa":
                 isa = v
-            elif label == "연금":
+            elif a.key == "pension":
                 pension = v
             else:
                 frac = v
         except Exception as e:  # noqa: BLE001
-            log.warning("snapshot KIS %s 실패: %s", label, e)
+            log.warning("snapshot KIS %s 실패: %s", a.label, e)
     kis_krw = isa + pension + frac
     total = toss_krw + kis_krw
 

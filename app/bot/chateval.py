@@ -33,7 +33,8 @@ def _price(symbol: str) -> float:
     try:
         if symbol[:1].isdigit():
             from bot.brokers.kis import KISBroker
-            return KISBroker(account=("63776023", "01"), paper=False).get_price(symbol)
+            from bot.accounts import kr_data_account
+            return KISBroker(account=kr_data_account(), paper=False).get_price(symbol)
         from bot.brokers.toss import TossBroker
         return TossBroker().get_price(symbol)
     except Exception:  # noqa: BLE001

@@ -148,10 +148,12 @@ def report(fx: float, today: datetime) -> dict:
             log.warning("realized 남편: %s", ex)
 
     try:
+        from bot.accounts import account_registry
         kr = []
-        for cano, prod in (("63776023", "01"), ("63776023", "22")):
-            kr += _kis_domestic(KISBroker(account=(cano, prod), paper=False), s365, e)
-        kr += _kis_overseas(KISBroker(account=("63751874", "01"), paper=False), s365, e)
+        for a in account_registry():
+            br = KISBroker(account=a.acct, paper=False)
+            kr += (_kis_overseas(br, s365, e) if a.overseas
+                   else _kis_domestic(br, s365, e))
         add("한투", kr)
     except Exception as ex:  # noqa: BLE001
         log.warning("realized 한투: %s", ex)

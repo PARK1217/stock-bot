@@ -178,7 +178,7 @@ def _rebalance_orders(targets, held, per_of, tsyms, market, fx, total_krw=None, 
 def run_paper(dry: bool = False) -> dict:
     kis = KISBroker(paper=True)   # 항상 모의
     toss = TossBroker()
-    fx = toss.usdkrw() or 1540.0
+    fx = toss.usdkrw() or settings.fx_fallback
 
     core_t, sat_t = _select(kis, toss)
     regime = _market_regime(toss)
@@ -197,7 +197,7 @@ def run_paper(dry: bool = False) -> dict:
     # 통합증거금이라 단순합산은 이중계산 → 초기 5억 + 보유 손익으로 일관 계산
     kr_pnl = sum((p.current_price - p.avg_price) * p.qty for p in kbal.positions)
     us_pnl = sum((p.current_price - p.avg_price) * p.qty for p in obal.positions) * fx
-    total_krw = 500_000_000 + kr_pnl + us_pnl
+    total_krw = settings.paper_initial_krw + kr_pnl + us_pnl
     if regime == "risk_off":                         # 하락장: 코어 50%만(절반 현금)
         core_per, sat_per = total_krw * 0.5 / CORE_N, 0.0
     else:

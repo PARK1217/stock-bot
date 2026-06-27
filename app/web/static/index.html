@@ -712,7 +712,7 @@ function renderPaper(){
   const d=PST; if(!d)return;
   const rg=d.strategy&&d.strategy.regime;
   document.getElementById('paper-st').innerHTML=`총 ${amt(d.total)}`+
-    (d.ret_pct!=null?`<span class="seg ${cls(d.ret_pct)}">${pct(d.ret_pct)} (${samt(d.total-500000000)})</span>`:'<span class="seg">시작 전</span>')+
+    (d.ret_pct!=null?`<span class="seg ${cls(d.ret_pct)}">${pct(d.ret_pct)} (${samt(d.total-(d.initial||500000000))})</span>`:'<span class="seg">시작 전</span>')+
     (d.invested?`<span class="seg mut">투자 ${amt(d.invested)} · 현금 ${amt(d.cash)}</span>`:'')+
     (rg?`<span class="seg" style="color:${rg==='risk_off'?'var(--down)':'var(--up)'}">${rg==='risk_off'?'⚠️방어모드':'🟢정상'}</span>`:'')+
     `<span class="seg mut" style="opacity:.7">가상 5억</span>`;

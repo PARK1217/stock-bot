@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     kis_live_account_prod: str = "01"
     kis_live_accounts: str = ""   # 통합조회용 "CANO-PRDT,CANO-PRDT" 콤마목록
 
+    # 실계좌 단일 출처 — 하드코딩 제거(accounts.py 레지스트리가 참조). .env로 교체 가능.
+    kis_main_cano: str = "63776023"       # ISA(/01)·연금(/22) 공용 CANO
+    kis_fraction_cano: str = "63751874"   # 소수점주식 CANO(해외)
+    fx_fallback: float = 1540.0           # USDKRW 조회 실패시 폴백(0원 방지)
+    paper_initial_krw: float = 500_000_000  # 모의 자동매매 초기자본
+
     # Toss
     toss_app_key: str = ""       # CLIENT_ID
     toss_app_secret: str = ""    # CLIENT_SECRET

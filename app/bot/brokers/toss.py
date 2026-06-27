@@ -133,7 +133,7 @@ class TossBroker(BrokerAdapter):
         except Exception:  # noqa: BLE001
             pass
         log.warning("토스 환율 조회 실패 → 폴백 1540")
-        return 1540.0
+        return settings.fx_fallback
 
     def get_price(self, symbol: str) -> float:
         resp = self._get("/api/v1/prices", {"symbols": symbol})
@@ -233,7 +233,7 @@ class TossBroker(BrokerAdapter):
         dpl = result.get("dailyProfitLoss") or {}
         # ⚠️ cash=KRW, 포지션 market_value=보유통화(미국주는 USD) → 환산 없이 더하면
         #    통화혼합으로 총평가 과소. 원화환산 후 합산.
-        fx = self.usdkrw() or 1540.0
+        fx = self.usdkrw() or settings.fx_fallback
         total = cash + sum(p.market_value_krw(fx) for p in positions)
         return Balance(cash=cash, total_eval=total, positions=positions,
                        total_pnl_pct=_rate(pl.get("rate")),
