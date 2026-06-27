@@ -142,7 +142,8 @@ async function loadVerify(){
   $('vf-ev').innerHTML=ev.length?ev.slice(0,120).map(p=>{const up=p.prob_up>=0.5;
     return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)} <span class="tag">${p.horizon_days}일</span>
         ${p.dir_hit?'<span class="tag hit">적중</span>':'<span class="tag miss">빗나감</span>'}${p.band_hit?'<span class="tag al">범위적중</span>':''}</div>
-      <div class="row-s num">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(기대 ${pct(p.exp_return)}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div></div></div>`;}).join('')
+      <div class="row-s num">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(기대 ${pct(p.exp_return)}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div>
+      ${(!p.dir_hit&&p.miss_reason)?`<div class="row-s" style="white-space:normal;line-height:1.45;color:#c9a86a">💡 ${esc(p.miss_reason)}</div>`:''}</div></div>`;}).join('')
     :'<div class="empty">아직 채점된 예측이 없어요 (7·14·21영업일 지나면 단기부터 채점)</div>';
   $('vf-opc').textContent=op.length+'건';
   const isKR=s=>/^\d/.test(s||'');                       // 숫자코드=국내

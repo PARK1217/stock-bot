@@ -431,7 +431,7 @@ def proposals(limit: int = 50):
 
 
 @app.get("/api/predictions")
-def predictions(limit: int = 50):
+def predictions(limit: int = 600):
     with SessionLocal() as s:
         rows = s.query(Prediction).order_by(Prediction.id.desc()).limit(limit).all()
         return [{
@@ -440,6 +440,7 @@ def predictions(limit: int = 50):
             "prob_up": p.prob_up, "exp_return": p.exp_return,
             "status": p.status, "actual_return": p.actual_return,
             "dir_hit": p.dir_hit, "band_hit": p.band_hit,
+            "miss_reason": p.miss_reason,
         } for p in rows]
 
 

@@ -368,9 +368,37 @@ def _bdays(start: datetime, end: datetime) -> int:
     return n
 
 
+def _miss_reason(session, p) -> str:
+    """빗나간 예측의 이유 추정 — 예측~채점 기간의 뉴스 이슈/큰 변동에서 근거를 찾는다.
+    실제 움직임과 같은 방향의 강한 극성 이슈가 있으면 그걸로, 없고 변동만 크면 급등락,
+    변동도 작으면 노이즈, 정말 아무것도 없으면 '이유 없음'."""
+    from bot.storage.models import NewsIssue
+    actual = p.actual_return or 0.0
+    actual_up = actual > 0
+    want = "긍정" if actual_up else "부정"        # 실제 움직임을 설명하는 극성
+    try:
+        rows = (session.query(NewsIssue)
+                .filter(NewsIssue.symbol == p.symbol, NewsIssue.ts >= p.made_at)
+                .all())
+    except Exception:  # noqa: BLE001
+        rows = []
+    strong = [r for r in rows if r.polarity == want and abs(r.score or 0) >= 0.15
+              and r.summary and "룩스루" not in r.summary]
+    if strong:
+        r0 = max(strong, key=lambda r: abs(r.score or 0))
+        head = (r0.summary or "").strip().lstrip("- ").split("\n")[0][:70]
+        return f"기간 중 {want} 이슈({r0.date}): {head}"
+    if abs(actual) >= 10:
+        return f"단기 급{'등' if actual_up else '락'}({actual:+.0f}%) — 뚜렷한 이슈는 미포착"
+    if abs(actual) < 2:
+        return "실제 변동이 작아 방향만 살짝 빗나감(노이즈 수준)"
+    return "이유 없음 — 특이 이슈·큰 변동 없이 빗나감(모델 한계)"
+
+
 def cmd_accuracy() -> None:
     """만기된 예측을 실측과 대조 → 자기예측 정확도(캘리브레이션) 산출.
-    만기 = 예측일로부터 horizon '영업일'(주말 제외) 경과 시점."""
+    만기 = 예측일로부터 horizon '영업일'(주말 제외) 경과 시점.
+    빗나간 예측은 _miss_reason 으로 이유까지 기록."""
     from bot.storage.models import Prediction
     from bot.brokers.kis import KISBroker
     broker, _, _ = _build()
@@ -391,6 +419,7 @@ def cmd_accuracy() -> None:
             p.band_hit = p.p10 <= price <= p.p90
             p.evaluated_at = datetime.now()
             p.status = "evaluated"
+            p.miss_reason = None if p.dir_hit else _miss_reason(session, p)
         session.commit()
 
         ev = session.query(Prediction).filter(Prediction.status == "evaluated").all()

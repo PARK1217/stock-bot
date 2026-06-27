@@ -125,3 +125,5 @@ class Prediction(Base):
     actual_return: Mapped[float | None] = mapped_column(Float, nullable=True)
     dir_hit: Mapped[bool | None] = mapped_column(nullable=True)   # 방향 적중
     band_hit: Mapped[bool | None] = mapped_column(nullable=True)  # P10~P90 안에 들었나
+    miss_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # 빗나간 예측의 사후분석 — 기간 중 이슈/큰변동에서 추정한 이유(없으면 '이유 없음')
