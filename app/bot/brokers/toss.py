@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import time
 
@@ -159,7 +160,16 @@ class TossBroker(BrokerAdapter):
 
     def get_candles(self, symbol: str, interval: str = "1d",
                     count: int = 120) -> list[dict]:
-        """일/분봉. 반환: [{ts, open, high, low, close, volume}] 과거→최근 순."""
+        """일/분봉. 반환: [{ts, open, high, low, close, volume}] 과거→최근 순.
+        일봉은 30분 redis 캐시 — 토스 API 직격 절감(분봉은 캐시 안 함)."""
+        ck = f"toss:candles:{symbol}:{interval}:{count}"
+        if interval == "1d":
+            try:
+                c = self._redis.get(ck)
+                if c:
+                    return json.loads(c)
+            except Exception:  # noqa: BLE001
+                pass
         resp = self._get("/api/v1/candles",
                          {"symbol": symbol, "interval": interval,
                           "count": min(count, 200), "adjusted": "true"})
@@ -174,6 +184,11 @@ class TossBroker(BrokerAdapter):
             "volume": float(r.get("volume") or 0),
         } for r in rows]
         out.sort(key=lambda c: c["ts"] or "")  # 과거→최근
+        if interval == "1d":
+            try:
+                self._redis.setex(ck, 1800, json.dumps(out))
+            except Exception:  # noqa: BLE001
+                pass
         return out
 
     # ---------- account ----------

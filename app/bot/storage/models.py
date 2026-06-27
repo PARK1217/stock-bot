@@ -109,7 +109,7 @@ class Prediction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     made_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)  # 앱시계(KST)
-    symbol: Mapped[str] = mapped_column(String(16))
+    symbol: Mapped[str] = mapped_column(String(16), index=True)
     horizon_days: Mapped[int] = mapped_column(Integer)
     base_price: Mapped[float] = mapped_column(Float)
     prob_up: Mapped[float] = mapped_column(Float)
@@ -119,7 +119,7 @@ class Prediction(Base):
     p90: Mapped[float] = mapped_column(Float)
     backtest_winrate: Mapped[float | None] = mapped_column(Float, nullable=True)
     # 평가(만기 후 채움)
-    status: Mapped[str] = mapped_column(String(10), default="open")  # open|evaluated
+    status: Mapped[str] = mapped_column(String(10), default="open", index=True)  # open|evaluated
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     actual_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     actual_return: Mapped[float | None] = mapped_column(Float, nullable=True)

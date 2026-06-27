@@ -446,23 +446,30 @@ def predictions(limit: int = 600):
 
 @app.get("/api/accuracy")
 def accuracy():
+    if (c := _cache_get("web:accuracy")) is not None:   # 분 단위로 안 바뀜 → 60초 캐시(매 60초·챗봇마다 풀스캔 방지)
+        return c
     with SessionLocal() as s:
-        ev = s.query(Prediction).filter(Prediction.status == "evaluated").all()
-        if not ev:
-            return {"evaluated": 0, "dir_acc": None, "band_acc": None, "by_horizon": []}
-        n = len(ev)
-        by_h = []
-        for hz in sorted({p.horizon_days for p in ev}):     # 7·14·21영업일 각각
-            g = [p for p in ev if p.horizon_days == hz]
-            by_h.append({"horizon": hz, "evaluated": len(g),
-                         "dir_acc": round(sum(1 for p in g if p.dir_hit) / len(g), 3),
-                         "band_acc": round(sum(1 for p in g if p.band_hit) / len(g), 3)})
-        return {
-            "evaluated": n,
-            "dir_acc": round(sum(1 for p in ev if p.dir_hit) / n, 3),
-            "band_acc": round(sum(1 for p in ev if p.band_hit) / n, 3),
-            "by_horizon": by_h,
-        }
+        ev = s.query(Prediction.dir_hit, Prediction.band_hit, Prediction.horizon_days
+                     ).filter(Prediction.status == "evaluated").all()
+    if not ev:
+        out = {"evaluated": 0, "dir_acc": None, "band_acc": None, "by_horizon": []}
+        _cache_set("web:accuracy", out, 60)
+        return out
+    n = len(ev)
+    by_h = []
+    for hz in sorted({p.horizon_days for p in ev}):     # 7·14·21영업일 각각
+        g = [p for p in ev if p.horizon_days == hz]
+        by_h.append({"horizon": hz, "evaluated": len(g),
+                     "dir_acc": round(sum(1 for p in g if p.dir_hit) / len(g), 3),
+                     "band_acc": round(sum(1 for p in g if p.band_hit) / len(g), 3)})
+    out = {
+        "evaluated": n,
+        "dir_acc": round(sum(1 for p in ev if p.dir_hit) / n, 3),
+        "band_acc": round(sum(1 for p in ev if p.band_hit) / n, 3),
+        "by_horizon": by_h,
+    }
+    _cache_set("web:accuracy", out, 60)
+    return out
 
 
 @app.get("/api/paper")

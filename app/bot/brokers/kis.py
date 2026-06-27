@@ -150,7 +150,15 @@ class KISBroker(BrokerAdapter):
 
     def get_candles(self, symbol: str, interval: str = "1d",
                     count: int = 100) -> list[dict]:
-        """국내 일봉. 반환 [{ts,open,high,low,close,volume}] 과거→최근."""
+        """국내 일봉. 반환 [{ts,open,high,low,close,volume}] 과거→최근.
+        30분 redis 캐시 — 일봉은 장중 마지막 봉만 갱신되므로 KIS API 직격·레이트리밋 절감."""
+        ck = f"kis:candles:{symbol}:{interval}:{count}"
+        try:
+            c = self._redis.get(ck)
+            if c:
+                return json.loads(c)
+        except Exception:  # noqa: BLE001
+            pass
         end = datetime.now()
         start = end - timedelta(days=int(count * 1.6) + 10)
         resp = self._get(
@@ -176,6 +184,10 @@ class KISBroker(BrokerAdapter):
                 "volume": float(r.get("acml_vol") or 0),
             })
         out.sort(key=lambda c: c["ts"] or "")  # 과거→최근
+        try:
+            self._redis.setex(ck, 1800, json.dumps(out))
+        except Exception:  # noqa: BLE001
+            pass
         return out
 
     # ---------- account ----------
