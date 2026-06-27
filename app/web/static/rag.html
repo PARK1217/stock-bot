@@ -143,7 +143,7 @@ async function loadVerify(){
   $('vf-ev').innerHTML=ev.length?ev.slice(0,120).map(p=>{const up=p.prob_up>=0.5;
     return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)} <span class="tag">${p.horizon_days}일</span>
         ${p.dir_hit?'<span class="tag hit">적중</span>':'<span class="tag miss">빗나감</span>'}${p.band_hit?'<span class="tag al">범위적중</span>':''}</div>
-      <div class="row-s num">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(상승확률 ${Math.round(p.prob_up*100)}%${p.winrate!=null?` · 신뢰도 ${Math.round(p.winrate*100)}%`:''}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div>
+      <div class="row-s num">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(상승확률 ${Math.round(p.prob_up*100)}% · 신뢰도 ${p.winrate!=null?`${Math.round(p.winrate*100)}%`:'—(표본부족)'}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div>
       ${(!p.dir_hit&&p.miss_reason)?`<div class="row-s" style="white-space:normal;line-height:1.45;color:#c9a86a">💡 ${esc(p.miss_reason)}</div>`:''}</div></div>`;}).join('')
     :'<div class="empty">아직 채점된 예측이 없어요 (7·14·21영업일 지나면 단기부터 채점)</div>';
   $('vf-opc').textContent=op.length+'건';
@@ -159,7 +159,7 @@ function renderOp(){
   const lbl=OPMKT==='us'?'🇺🇸 미국장':'🇰🇷 한국장';
   $('vf-op').innerHTML=arr.length?arr.slice(0,200).map(p=>{const up=p.prob_up>=0.5,xv=expVal(p);
     return `<div class="row" style="opacity:.95"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)} <span class="tag">${p.horizon_days}일</span></div>
-      <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b class="${up?'up':'down'}">${up?'▲상승':'▼하락'}</b> · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span> · 상승확률 ${Math.round(p.prob_up*100)}%${p.winrate!=null?` · <span title="이런 예측이 과거에 맞은 비율">신뢰도 ${Math.round(p.winrate*100)}%</span>`:''}</div></div>
+      <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b class="${up?'up':'down'}">${up?'▲상승':'▼하락'}</b> · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span> · 상승확률 ${Math.round(p.prob_up*100)}% · ${p.winrate!=null?`<span title="이런 예측이 과거에 맞은 비율">신뢰도 ${Math.round(p.winrate*100)}%</span>`:`<span class="mut" title="백테스트 표본 부족 — 아직 신뢰도 미산출">신뢰도 —(표본부족)</span>`}</div></div>
       <div class="row-r"><div class="v num ${xv>=0?'up':'down'}">${(xv>=0?'+':'')+xv.toFixed(1)}</div><div class="v2 mut">기대값</div></div></div>`;}).join('')
     :`<div class="empty">${lbl} 진행 중 예측 없음</div>`;
 }
