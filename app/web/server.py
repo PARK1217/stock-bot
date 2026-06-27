@@ -448,12 +448,19 @@ def accuracy():
     with SessionLocal() as s:
         ev = s.query(Prediction).filter(Prediction.status == "evaluated").all()
         if not ev:
-            return {"evaluated": 0, "dir_acc": None, "band_acc": None}
+            return {"evaluated": 0, "dir_acc": None, "band_acc": None, "by_horizon": []}
         n = len(ev)
+        by_h = []
+        for hz in sorted({p.horizon_days for p in ev}):     # 7·14·21영업일 각각
+            g = [p for p in ev if p.horizon_days == hz]
+            by_h.append({"horizon": hz, "evaluated": len(g),
+                         "dir_acc": round(sum(1 for p in g if p.dir_hit) / len(g), 3),
+                         "band_acc": round(sum(1 for p in g if p.band_hit) / len(g), 3)})
         return {
             "evaluated": n,
             "dir_acc": round(sum(1 for p in ev if p.dir_hit) / n, 3),
             "band_acc": round(sum(1 for p in ev if p.band_hit) / n, 3),
+            "by_horizon": by_h,
         }
 
 

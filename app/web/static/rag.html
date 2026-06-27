@@ -64,9 +64,9 @@
 </div>
 <div class="wrap">
   <div class="card" data-tab="verify">
-    <h2>📊 예측 검증 (21일) <span class="sub" id="vf-st">로딩…</span></h2>
-    <div class="help-box">매일 <b>21일 뒤</b> 가격을 예측하고, 21일이 지나면 <b>실제로 맞았는지 스스로 채점</b>합니다.
-      <b>방향</b>·<b>범위</b> 적중률로 이 예측을 얼마나 믿을지 가늠해요.</div>
+    <h2>📊 예측 검증 (7·14·21일) <span class="sub" id="vf-st">로딩…</span></h2>
+    <div class="help-box">매일 <b>7·14·21영업일 뒤</b> 가격을 예측하고, 해당 영업일이 지나면 <b>실제로 맞았는지 스스로 채점</b>합니다.
+      단기(7일)부터 빨리 검증돼요. <b>방향</b>·<b>범위</b> 적중률로 이 예측을 얼마나 믿을지 가늠해요.</div>
     <div class="big" id="vf-sum"></div>
     <div id="vf-bysym"></div>
   </div>
@@ -125,21 +125,25 @@ async function loadVerify(){
     $('vf-sum').innerHTML=`<div><div class="k">방향 적중률</div><div class="val ${a.dir_acc>=0.5?'up':'down'}">${Math.round(a.dir_acc*100)}%</div></div>`
      +`<div><div class="k">범위 적중률</div><div class="val">${Math.round(a.band_acc*100)}%</div></div>`
      +`<div><div class="k">채점 표본</div><div class="val">${a.evaluated}건</div></div>`;
-  }else $('vf-sum').innerHTML='<div class="mut" style="padding:0 0 4px">아직 채점된 예측이 없어요 — 예측이 21일 지나면 채워집니다.</div>';
+  }else $('vf-sum').innerHTML='<div class="mut" style="padding:0 0 4px">아직 채점된 예측이 없어요 — 7·14·21영업일 지나면 단기부터 채워집니다.</div>';
+  const hz=(a&&a.by_horizon)||[];
+  const hzH=hz.length?('<div class="grp"><span>기간별 정확도(영업일)</span><span class="mut" style="font-weight:400;font-size:11px">단기일수록 빨리 검증</span></div>'
+    +hz.map(h=>`<div class="row"><div class="row-l"><div class="row-t"><span class="tag">${h.horizon}일</span> <span class="mut" style="font-size:11.5px">${h.evaluated}건 채점</span></div></div>
+      <div class="row-r"><span class="v ${h.dir_acc>=0.5?'up':'down'}">방향 ${Math.round(h.dir_acc*100)}%</span><div class="v2 mut">범위 ${Math.round(h.band_acc*100)}%</div></div></div>`).join('')):'';
   const by={};
   ev.forEach(p=>{const s=by[p.symbol]||(by[p.symbol]={n:0,hit:0});s.n++;if(p.dir_hit)s.hit++;});
   const syms=Object.keys(by).sort((x,y)=>by[y].n-by[x].n);
-  $('vf-bysym').innerHTML=syms.length?('<div class="grp"><span>종목별 방향 적중률</span><span class="mut" style="font-weight:400;font-size:11px">표본 많을수록 신뢰</span></div>'
+  $('vf-bysym').innerHTML=hzH+(syms.length?('<div class="grp"><span>종목별 방향 적중률</span><span class="mut" style="font-weight:400;font-size:11px">표본 많을수록 신뢰</span></div>'
     +syms.map(s=>{const r=by[s],acc=r.hit/r.n,c=acc>=0.5?'var(--up)':'var(--down)';
       return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${s}</span>${nm(s)}</div></div>
         <div class="row-r"><span class="bar"><i style="width:${Math.round(acc*100)}%;background:${c}"></i></span>
-          <span class="v num" style="margin-left:8px;color:${c}">${Math.round(acc*100)}%</span><div class="v2 mut">${r.hit}/${r.n} 적중</div></div></div>`;}).join('')):'';
+          <span class="v num" style="margin-left:8px;color:${c}">${Math.round(acc*100)}%</span><div class="v2 mut">${r.hit}/${r.n} 적중</div></div></div>`;}).join('')):'');
   $('vf-evc').textContent=ev.length+'건';
   $('vf-ev').innerHTML=ev.length?ev.slice(0,120).map(p=>{const up=p.prob_up>=0.5;
-    return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)}
+    return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)} <span class="tag">${p.horizon_days}일</span>
         ${p.dir_hit?'<span class="tag hit">적중</span>':'<span class="tag miss">빗나감</span>'}${p.band_hit?'<span class="tag al">범위적중</span>':''}</div>
       <div class="row-s num">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(기대 ${pct(p.exp_return)}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div></div></div>`;}).join('')
-    :'<div class="empty">아직 채점된 예측이 없어요 (예측이 21일 지나면 채점)</div>';
+    :'<div class="empty">아직 채점된 예측이 없어요 (7·14·21영업일 지나면 단기부터 채점)</div>';
   $('vf-opc').textContent=op.length+'건';
   const isKR=s=>/^\d/.test(s||'');                       // 숫자코드=국내
   OPDATA={us:op.filter(p=>!isKR(p.symbol)), kr:op.filter(p=>isKR(p.symbol))};
@@ -152,7 +156,7 @@ function renderOp(){
   const arr=(OPDATA[OPMKT]||[]).slice().sort((a,b)=>expVal(b)-expVal(a));
   const lbl=OPMKT==='us'?'🇺🇸 미국장':'🇰🇷 한국장';
   $('vf-op').innerHTML=arr.length?arr.slice(0,200).map(p=>{const up=p.prob_up>=0.5,xv=expVal(p);
-    return `<div class="row" style="opacity:.95"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)}</div>
+    return `<div class="row" style="opacity:.95"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)} <span class="tag">${p.horizon_days}일</span></div>
       <div class="row-s num">${(p.made_at||'').slice(0,10)} 예측 <b class="${up?'up':'down'}">${up?'▲상승':'▼하락'}</b> · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span> · 상승확률 ${Math.round(p.prob_up*100)}%</div></div>
       <div class="row-r"><div class="v num ${xv>=0?'up':'down'}">${(xv>=0?'+':'')+xv.toFixed(1)}</div><div class="v2 mut">기대값</div></div></div>`;}).join('')
     :`<div class="empty">${lbl} 진행 중 예측 없음</div>`;

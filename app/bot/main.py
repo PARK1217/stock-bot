@@ -307,8 +307,11 @@ def cmd_forecast(symbol: str = "") -> None:
            f"{('%.0f%%' % (wr*100)) if wr else '자료부족'}")
 
 
+HORIZONS = (7, 14, 21)   # 예측·채점 기간(영업일). 단기(7)부터 빨리 검증되고 21은 중기.
+
+
 def cmd_forecast_all() -> None:
-    """워치리스트(US+KR) 전체 예측 생성·DB기록 (스케줄용)."""
+    """워치리스트(US+KR) 전체 예측 생성·DB기록 (스케줄용). 종목당 7·14·21영업일 3건."""
     from bot import news
     from bot.forecast import forecast_symbol
     from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST, SINGLE_US, SINGLE_KR
@@ -325,17 +328,19 @@ def cmd_forecast_all() -> None:
                     closes = [c["close"] for c in getc(symbol, "1d", 200) if c["close"] > 0]
                     if len(closes) < 30:
                         continue
-                    fc = forecast_symbol(symbol, closes, 21,
-                                         technical_tilt=_technical_tilt(closes),
-                                         news_sentiment=news.tilt(symbol, market))
-                    if fc is None:
-                        continue
-                    session.add(Prediction(
-                        symbol=symbol, horizon_days=21, base_price=fc.last,
-                        prob_up=fc.prob_up, exp_return=fc.exp_return,
-                        p50=fc.band["p50"], p10=fc.band["p10"], p90=fc.band["p90"],
-                        backtest_winrate=fc.backtest_winrate))
-                    made[0] += 1
+                    tilt = _technical_tilt(closes)
+                    sent = news.tilt(symbol, market)
+                    for hz in HORIZONS:             # 7·14·21영업일 동시 예측 → 단기부터 빠르게 검증
+                        fc = forecast_symbol(symbol, closes, hz,
+                                             technical_tilt=tilt, news_sentiment=sent)
+                        if fc is None:
+                            continue
+                        session.add(Prediction(
+                            symbol=symbol, horizon_days=hz, base_price=fc.last,
+                            prob_up=fc.prob_up, exp_return=fc.exp_return,
+                            p50=fc.band["p50"], p10=fc.band["p10"], p90=fc.band["p90"],
+                            backtest_winrate=fc.backtest_winrate))
+                        made[0] += 1
                 except Exception as e:  # noqa: BLE001
                     log.warning("%s 예측 실패: %s", symbol, e)
 
@@ -349,21 +354,32 @@ def cmd_forecast_all() -> None:
     log.info("예측 생성 %d건", made)
     if made:
         notify(f"🔮 오늘의 종목별 전망 {made}개 업데이트했어요 "
-               f"(약 한 달 뒤 가격 흐름 추정 — 대시보드에서 확인!)")
+               f"(7·14·21영업일 뒤 흐름 추정 — 단기부터 빨리 검증돼요!)")
+
+
+def _bdays(start: datetime, end: datetime) -> int:
+    """start~end 사이 영업일(월~금) 수. 공휴일은 무시(근사). 만기 판정용."""
+    from datetime import timedelta
+    d, e, n = start.date(), end.date(), 0
+    while d < e:
+        d += timedelta(days=1)
+        if d.weekday() < 5:                  # 0=월 … 4=금
+            n += 1
+    return n
 
 
 def cmd_accuracy() -> None:
-    """만기된 예측을 실측과 대조 → 자기예측 정확도(캘리브레이션) 산출."""
-    from datetime import timedelta
+    """만기된 예측을 실측과 대조 → 자기예측 정확도(캘리브레이션) 산출.
+    만기 = 예측일로부터 horizon '영업일'(주말 제외) 경과 시점."""
     from bot.storage.models import Prediction
     from bot.brokers.kis import KISBroker
     broker, _, _ = _build()
     kis = KISBroker(account=("63776023", "01"), paper=False)   # KR 종목 시세용
+    now = datetime.now()
     with SessionLocal() as session:
         opens = session.query(Prediction).filter(Prediction.status == "open").all()
         for p in opens:
-            due = p.made_at + timedelta(days=p.horizon_days * 1.5)  # 거래일 근사
-            if datetime.now() < due:
+            if _bdays(p.made_at, now) < p.horizon_days:    # 영업일 기준 만기 미도래
                 continue
             # KR(숫자코드)는 KIS, 그 외(US)는 기본 브로커로 시세 조회
             price = kis.get_price(p.symbol) if p.symbol[:1].isdigit() else broker.get_price(p.symbol)
