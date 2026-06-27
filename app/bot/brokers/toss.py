@@ -112,15 +112,27 @@ class TossBroker(BrokerAdapter):
 
     # ---------- market ----------
     def usdkrw(self) -> float:
+        """USDKRW 환율. 실패해도 0을 반환하지 않음(USD자산 0원 방지) —
+        마지막 성공값(redis 24h) → 없으면 1540 폴백."""
         try:
             r = self._get("/api/v1/exchange-rate",
                           {"baseCurrency": "USD", "quoteCurrency": "KRW"})
             r.raise_for_status()
             res = r.json().get("result", {})
-            return float(res.get("rate") or res.get("midRate") or 0)
+            rate = float(res.get("rate") or res.get("midRate") or 0)
+            if rate > 0:
+                self._redis.set("toss:fx:usdkrw", rate, ex=24 * 3600)
+                return rate
         except (httpx.HTTPError, ValueError):
-            log.warning("토스 환율 조회 실패 → 0 반환")
-            return 0.0
+            pass
+        try:
+            cached = self._redis.get("toss:fx:usdkrw")
+            if cached:
+                return float(cached)
+        except Exception:  # noqa: BLE001
+            pass
+        log.warning("토스 환율 조회 실패 → 폴백 1540")
+        return 1540.0
 
     def get_price(self, symbol: str) -> float:
         resp = self._get("/api/v1/prices", {"symbols": symbol})

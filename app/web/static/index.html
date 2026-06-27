@@ -618,7 +618,10 @@ async function loadProposals(){
   const open=(d||[]).filter(p=>p.status==='pending');
   if(!open.length){b.innerHTML='<div class="empty">대기 중 제안 없음 — 지금 비중이 목표 범위 안이에요</div>';return;}
   b.innerHTML=open.map(propRow).join('');
-  open.forEach(fillForecast);                          // 각 제안에 모델 예측 참고치 주입
+  [...new Set(open.map(p=>p.symbol))].forEach(async sym=>{   // 종목별 예측 1회만(중복요청 방지)
+    const f=await j('/api/forecast/'+encodeURIComponent(sym));
+    open.filter(p=>p.symbol===sym).forEach(p=>fillForecast(p,f));
+  });
 }
 function propReason(p){                                 // 터스한 reason → 쉬운 한글
   const r=p.reason||'', buy=p.side==='buy';
@@ -641,17 +644,14 @@ function propRow(p){
     <div class="row-r"><div class="v num">${nf(p.qty,4)}</div><div class="v2 mut">수량(주)</div>
       <div class="v2 mut num">~${c}${nf(p.ref_price)}</div></div></div>`;
 }
-async function fillForecast(p){
+function fillForecast(p,f){                              // 종목 예측(f)을 해당 제안 행에 주입
   const el=document.getElementById('fc-'+p.id); if(!el)return;
-  try{
-    const f=await j('/api/forecast/'+encodeURIComponent(p.symbol));
-    if(!f||f.error||!f.band){el.textContent='📊 예측 데이터 부족';return;}
-    const c=p.currency==='USD'?'$':'₩', last=f.last||0;
-    const bz=last*(1+(f.exp_trough_pct||0)/100), sz=last*(1+(f.exp_peak_pct||0)/100);
-    el.innerHTML=`📊 한달 예상 <b>${c}${nf(f.band.p10)}~${c}${nf(f.band.p90)}</b> · `
-      +`매수존~<b>${c}${nf(bz)}</b> · 매도존~<b>${c}${nf(sz)}</b> · `
-      +`기대 <span class="${cls(f.exp_return)}">${pct(f.exp_return)}</span> · 상승확률 ${Math.round((f.prob_up||0)*100)}%`;
-  }catch(e){el.textContent='';}
+  if(!f||f.error||!f.band){el.textContent='📊 예측 데이터 부족';return;}
+  const c=p.currency==='USD'?'$':'₩', last=f.last||0;
+  const bz=last*(1+(f.exp_trough_pct||0)/100), sz=last*(1+(f.exp_peak_pct||0)/100);
+  el.innerHTML=`📊 한달 예상 <b>${c}${nf(f.band.p10)}~${c}${nf(f.band.p90)}</b> · `
+    +`매수존~<b>${c}${nf(bz)}</b> · 매도존~<b>${c}${nf(sz)}</b> · `
+    +`기대 <span class="${cls(f.exp_return)}">${pct(f.exp_return)}</span> · 상승확률 ${Math.round((f.prob_up||0)*100)}%`;
 }
 
 // ---------- 예측 기록 ----------
@@ -771,7 +771,7 @@ function renderTrades(){
 async function loadKis(){
   const d=await j('/api/kis'); if(!d)return;
   KIST.data=d; KIST.total=d.total; KIST.rate=d.total_pnl_pct; KIST.total_amt=d.total_pnl_amt_krw;
-  learnNames(d.positions); renderScreen(); renderNews(); loadProposals();
+  learnNames(d.positions); renderScreen(); renderNews();   // loadProposals는 loadAll/인터벌이 담당(중복호출 제거)
   updateHeader(); renderKis();
 }
 function renderKis(){
@@ -994,6 +994,7 @@ loadAll(); updateSessions(); loadMkt();
 setInterval(updateSessions,30000);
 setInterval(loadMkt,3600000);                                   // 휴장 여부 1시간마다
 setInterval(pollQuotes,10000);
+setInterval(refreshLive,12000);                                 // 이슈 영향·추세 현재가 실시간 갱신
 setInterval(()=>{loadPortfolio();loadCash();loadOrders();loadProposals();loadPred();
   if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(PTR.page);}},60000);
 </script>

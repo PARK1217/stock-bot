@@ -15,7 +15,7 @@ class OrderLog(Base):
     __tablename__ = "order_log"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     broker: Mapped[str] = mapped_column(String(16))
     mode: Mapped[str] = mapped_column(String(8))      # paper | live
     symbol: Mapped[str] = mapped_column(String(16))
@@ -33,7 +33,7 @@ class Proposal(Base):
     __tablename__ = "proposal"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     broker: Mapped[str] = mapped_column(String(16))
     mode: Mapped[str] = mapped_column(String(8))       # paper | live
     symbol: Mapped[str] = mapped_column(String(16))
@@ -52,7 +52,7 @@ class DailySnapshot(Base):
     __tablename__ = "daily_snapshot"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     cash: Mapped[float] = mapped_column(Float)
     total_eval: Mapped[float] = mapped_column(Float)
 
@@ -62,7 +62,7 @@ class PaperSnapshot(Base):
     __tablename__ = "paper_snapshot"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     cash: Mapped[float] = mapped_column(Float)
     total_eval: Mapped[float] = mapped_column(Float)
     holdings: Mapped[int] = mapped_column(Integer, default=0)
@@ -73,7 +73,7 @@ class AssetSnapshot(Base):
     __tablename__ = "asset_snapshot"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     total_krw: Mapped[float] = mapped_column(Float)
     toss_krw: Mapped[float] = mapped_column(Float, default=0)
     kis_krw: Mapped[float] = mapped_column(Float, default=0)
@@ -87,7 +87,7 @@ class NewsIssue(Base):
     __tablename__ = "news_issue"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)  # 앱시계(KST)
     date: Mapped[str] = mapped_column(String(10), index=True)   # YYYY-MM-DD (KST)
     session: Mapped[str] = mapped_column(String(16), default="")  # KR-오전 / US-후반 등
     symbol: Mapped[str] = mapped_column(String(16), index=True)
@@ -108,7 +108,7 @@ class Prediction(Base):
     __tablename__ = "prediction"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    made_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    made_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)  # 앱시계(KST)
     symbol: Mapped[str] = mapped_column(String(16))
     horizon_days: Mapped[int] = mapped_column(Integer)
     base_price: Mapped[float] = mapped_column(Float)
