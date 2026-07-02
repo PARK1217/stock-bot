@@ -791,6 +791,9 @@ async function loadKis(){
   learnNames(d.positions); renderScreen(); renderNews();   // loadProposals는 loadAll/인터벌이 담당(중복호출 제거)
   updateHeader(); renderKis();
 }
+// 계좌 라벨→아이콘/정렬(부분일치 — accounts.py가 'ISA중개형'·'연금저축'·'소수점주식'으로 바꿔도 매칭)
+function accIcon(a){a=a||'';return a.includes('ISA')?'🟦':a.includes('연금')?'🟪':a.includes('소수점')?'🟩':'🏦';}
+function accOrd(a){a=a||'';return a.includes('ISA')?0:a.includes('연금')?1:a.includes('소수점')?2:3;}
 function renderKis(){
   const d=KIST.data; if(!d)return;
   document.getElementById('kis-st').innerHTML='총 '+amt(d.total)+
@@ -798,13 +801,14 @@ function renderKis(){
     (d.total_pnl_pct!=null?`<span class="seg ${cls(d.total_pnl_pct)}">전체 ${pct(d.total_pnl_pct)}${d.total_pnl_amt_krw!=null?' ('+samt(d.total_pnl_amt_krw)+')':''}</span>`:'')+
     (d.daily_pnl_amt_krw!=null?`<span class="seg ${cls(d.daily_pnl_pct)}">오늘 ${pct(d.daily_pnl_pct)} (${samt(d.daily_pnl_amt_krw)})</span>`:'');
   const groups={}; (d.positions||[]).forEach(p=>{(groups[p.account]=groups[p.account]||[]).push(p)});
-  const icon={'ISA':'🟦','연금':'🟪','소수점':'🟩'}; let html='';
-  ['ISA','연금','소수점'].forEach(acc=>{
+  let html='';
+  // 라벨 하드코딩 대신 데이터에 있는 그룹을 그대로 렌더 — 라벨이 바뀌어도 목록이 안 숨겨짐
+  Object.keys(groups).sort((x,y)=>accOrd(x)-accOrd(y)).forEach(acc=>{
     const ps=groups[acc]; if(!ps||!ps.length)return;
     const sub=ps.reduce((s,p)=>s+p.value_krw,0);
     const cost=ps.reduce((s,p)=>s+p.value_krw/(1+p.pnl_pct/100),0);
     const rr=cost?(sub/cost-1)*100:0, pa=sub-cost;
-    html+=`<div class="grp"><span>${icon[acc]||''} ${acc} <span class="mut" style="font-weight:400">${ps.length}종</span></span>
+    html+=`<div class="grp"><span>${accIcon(acc)} ${acc} <span class="mut" style="font-weight:400">${ps.length}종</span></span>
       <span class="num"><span class="${cls(rr)}">${pct(rr)} (${samt(pa)})</span> &nbsp;<b>${amt(sub)}</b></span></div>`;
     ps.sort((a,b)=>b.value_krw-a.value_krw).forEach(p=>{
       html+=`<div class="row sub-row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>
@@ -928,13 +932,13 @@ function kordPage(d){const pages=Math.ceil(KORD.items.length/KORD.size)||1;KORD.
 function renderKisOrders(){
   const el=document.getElementById('kisorders'),os=KORD.items;
   if(!os.length){el.innerHTML='<div class="empty">최근 40일 거래 기록이 없어요</div>';return;}
-  const icon={'ISA':'🟦','연금':'🟪'}, pages=Math.ceil(os.length/KORD.size);
+  const pages=Math.ceil(os.length/KORD.size);
   const rows=os.slice(KORD.page*KORD.size,(KORD.page+1)*KORD.size).map(o=>{
     const buy=o.side==='BUY';
     const wait=o.pending?'<span class="tag" style="background:#3a3417;color:#ffd454">⏳대기</span> ':'';
     const part=(o.filled!=null&&o.qty&&+o.filled!==+o.qty)?`${nf(o.filled,0)}/${nf(o.qty,0)}`:nf(o.qty,0);
     return `<div class="row"><div class="row-l"><div class="row-t">
-        ${wait}<span class="tag ${buy?'buy':'sell'}">${o.side_name||(buy?'매수':'매도')}</span> ${icon[o.account]||''} <span class="sym">${o.name||nameOf(o.symbol)||o.symbol}</span></div>
+        ${wait}<span class="tag ${buy?'buy':'sell'}">${o.side_name||(buy?'매수':'매도')}</span> ${accIcon(o.account)} <span class="sym">${o.name||nameOf(o.symbol)||o.symbol}</span></div>
        <div class="row-s num">${o.at} · ${part}주 @₩${nf(o.price,0)}</div></div>
      <div class="row-r"><div class="v num">${o.amount?amt(o.amount):'<span class=mut>—</span>'}</div></div></div>`;
   }).join('');
