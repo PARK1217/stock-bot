@@ -16,7 +16,8 @@ import hmac
 import redis
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
+                               RedirectResponse)
 from fastapi.staticfiles import StaticFiles
 
 from bot.accounts import account_registry, kr_data_account
@@ -58,7 +59,34 @@ const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'applica
 body:JSON.stringify({password:p})});
 if(r.ok)location.reload();else document.getElementById('e').textContent='비밀번호가 틀렸어요';}</script>
 </html>"""
-_AUTH_FREE = ("/api/login", "/api/health", "/sw.js", "/assets/manifest.webmanifest")
+_AUTH_FREE = ("/api/login", "/api/health", "/sw.js", "/assets/manifest.webmanifest",
+              "/demo", "/api/demo-enter")            # 데모 전용 진입경로(비번없이 접근)
+# 데모 랜딩 — /demo 로 접속하면 "합성데이터 체험판" 안내 + 원클릭 입장
+_DEMO_HTML = """<!doctype html><html lang=ko><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>stock-bot 데모 체험</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+background:radial-gradient(120% 120% at 50% 0%,#141824 0%,#0d0f15 60%);color:#e6e9ef;
+font-family:system-ui,-apple-system,sans-serif;padding:20px}
+.box{background:#161a22;border:1px solid #2a2f3a;border-radius:18px;padding:34px 30px;width:340px;text-align:center;
+box-shadow:0 18px 50px -18px rgba(0,0,0,.7)}
+h1{font-size:22px;margin:0 0 6px}.tag{display:inline-block;background:#1f2a44;color:#7fb0ff;font-size:11px;
+font-weight:700;border-radius:20px;padding:4px 11px;margin-bottom:16px}
+p{font-size:13.5px;line-height:1.65;color:#aab2c0;margin:0 0 20px}
+b{color:#e6e9ef}button{width:100%;background:#4c8dff;color:#fff;border:0;border-radius:10px;
+padding:13px;font-size:15px;font-weight:700;cursor:pointer;transition:.15s}
+button:hover{background:#3d7bf0}button:active{transform:scale(.98)}
+.hint{margin:16px 0 0;font-size:12px;color:#7b8494}code{background:#0d1017;border:1px solid #2a2f3a;
+color:#ffd454;border-radius:6px;padding:2px 8px;font-size:12.5px;font-weight:700}</style>
+<div class=box>
+  <div class=tag>PORTFOLIO DEMO</div>
+  <h1>📈 stock-bot 체험</h1>
+  <p>실제 대시보드를 <b>합성(가짜) 데이터</b>로 둘러보는 체험판입니다.<br>
+  실계좌·자산·손익 정보는 <b>전혀 포함되지 않습니다.</b></p>
+  <button onclick="location.href='/api/demo-enter'">데모 대시보드 입장 &rarr;</button>
+  <p class=hint>🔑 직접 로그인하려면 비밀번호 <code>demo</code></p>
+</div>
+</html>"""
 
 
 @app.middleware("http")
@@ -101,6 +129,23 @@ def login(body: dict):
                         httponly=True, samesite="lax")
         return resp
     return JSONResponse({"ok": False}, status_code=401)
+
+
+@app.get("/demo")
+def demo_landing():
+    """데모 전용 진입 랜딩(비번없이 접근). 합성데이터 체험 안내 + 원클릭 입장."""
+    return HTMLResponse(_DEMO_HTML)
+
+
+@app.get("/api/demo-enter")
+def demo_enter():
+    """원클릭 데모 입장 — 데모 쿠키 세팅 후 대시보드로. (합성데이터만, 실계좌 격리)"""
+    if not _DEMO_TOKEN:
+        return RedirectResponse("/", status_code=302)
+    resp = RedirectResponse("/", status_code=302)
+    resp.set_cookie(_AUTH_COOKIE, _DEMO_TOKEN, max_age=60 * 60 * 24 * 30,
+                    httponly=True, samesite="lax")
+    return resp
 
 
 @app.on_event("startup")
