@@ -110,6 +110,15 @@ async def _auth(request: Request, call_next):
                     body = {}
             return JSONResponse(demo_api(request.method, path,
                                          dict(request.query_params), body) or {})
+        if path in ("/", "/rag"):        # 데모 화면: 나/남편 토글 숨김(개인기능 비노출)
+            fname = "index.html" if path == "/" else "rag.html"
+            try:
+                html = (_STATIC / fname).read_text(encoding="utf-8").replace(
+                    "</head>",
+                    "<style>.user-tog{display:none!important}</style></head>", 1)
+                return HTMLResponse(html)
+            except Exception:  # noqa: BLE001
+                pass
         return await call_next(request)
     if path.startswith("/api/"):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
