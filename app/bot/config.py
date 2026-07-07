@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""           # (선택) Anthropic 대체
     sentiment_model: str = "claude-haiku-4-5-20251001"
     dashboard_password: str = ""          # 대시보드 외부접속 비번(빈값=인증off, 집망내용)
+    demo_password: str = "demo"           # 데모(포트폴리오) 로그인 비번 → 합성데이터만 노출(실계좌 격리)
 
     # risk
     max_position_pct: float = 20

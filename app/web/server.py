@@ -36,6 +36,9 @@ _r = redis.from_url(settings.redis_url)
 _PW = settings.dashboard_password
 _AUTH_COOKIE = "sb_auth"
 _AUTH_TOKEN = hashlib.sha256(f"stockbot::{_PW}".encode()).hexdigest()[:40] if _PW else ""
+# 데모(포트폴리오) 로그인 — 별도 토큰. 이 쿠키로는 /api가 합성데이터만 반환(실계좌 미도달).
+_DEMO_PW = settings.demo_password
+_DEMO_TOKEN = hashlib.sha256(f"stockbot::demo::{_DEMO_PW}".encode()).hexdigest()[:40] if _DEMO_PW else ""
 _LOGIN_HTML = """<!doctype html><html lang=ko><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>stock-bot</title>
@@ -67,6 +70,19 @@ async def _auth(request: Request, call_next):
         return await call_next(request)
     if hmac.compare_digest(request.cookies.get(_AUTH_COOKIE) or "", _AUTH_TOKEN):
         return await call_next(request)
+    if _DEMO_TOKEN and hmac.compare_digest(request.cookies.get(_AUTH_COOKIE) or "", _DEMO_TOKEN):
+        # 데모 세션: /api는 합성데이터로 가로채(실 KIS/토스/DB 미도달), HTML·정적은 실제 그대로 서빙
+        if path.startswith("/api/"):
+            from bot.demo import demo_api
+            body = None
+            if request.method not in ("GET", "HEAD"):
+                try:
+                    body = await request.json()
+                except Exception:  # noqa: BLE001
+                    body = {}
+            return JSONResponse(demo_api(request.method, path,
+                                         dict(request.query_params), body) or {})
+        return await call_next(request)
     if path.startswith("/api/"):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     return HTMLResponse(_LOGIN_HTML, status_code=401)
@@ -77,6 +93,11 @@ def login(body: dict):
     if _PW and hmac.compare_digest(str(body.get("password") or ""), _PW):
         resp = JSONResponse({"ok": True})
         resp.set_cookie(_AUTH_COOKIE, _AUTH_TOKEN, max_age=60 * 60 * 24 * 30,
+                        httponly=True, samesite="lax")
+        return resp
+    if _DEMO_PW and hmac.compare_digest(str(body.get("password") or ""), _DEMO_PW):
+        resp = JSONResponse({"ok": True, "demo": True})    # 데모: 합성데이터 세션
+        resp.set_cookie(_AUTH_COOKIE, _DEMO_TOKEN, max_age=60 * 60 * 24 * 30,
                         httponly=True, samesite="lax")
         return resp
     return JSONResponse({"ok": False}, status_code=401)
