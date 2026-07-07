@@ -91,17 +91,17 @@ def _round2(n):
 # ---------- 토스(미국) 보유 ----------
 def _build_toss():
     rows = [
-        {"symbol": "VYM", "qty": 42, "avg_price": 118.4, "price": 129.6, "currency": "USD", "pnl_pct": 9.5},
-        {"symbol": "DGRW", "qty": 45, "avg_price": 78.2, "price": 82.0, "currency": "USD", "pnl_pct": 4.9},
-        {"symbol": "SCHG", "qty": 65, "avg_price": 24.3, "price": 25.9, "currency": "USD", "pnl_pct": 6.6},
-        {"symbol": "KO", "qty": 40, "avg_price": 66.4, "price": 64.3, "currency": "USD", "pnl_pct": -3.1},
-        {"symbol": "VOO", "qty": 8, "avg_price": 498.2, "price": 520.6, "currency": "USD", "pnl_pct": 4.5},
-        {"symbol": "QQQM", "qty": 16, "avg_price": 190.4, "price": 202.8, "currency": "USD", "pnl_pct": 6.5},
-        {"symbol": "JNJ", "qty": 22, "avg_price": 148.6, "price": 159.8, "currency": "USD", "pnl_pct": 7.5},
-        {"symbol": "MSFT", "qty": 6, "avg_price": 390.0, "price": 438.2, "currency": "USD", "pnl_pct": 12.4},
-        {"symbol": "V", "qty": 10, "avg_price": 298.5, "price": 289.3, "currency": "USD", "pnl_pct": -3.1},
-        {"symbol": "META", "qty": 5, "avg_price": 560.5, "price": 592.4, "currency": "USD", "pnl_pct": 5.7},
-        {"symbol": "BIL", "qty": 45, "avg_price": 91.4, "price": 91.6, "currency": "USD", "pnl_pct": 0.2},
+        {"symbol": "VYM", "qty": 3, "avg_price": 118.4, "price": 129.6, "currency": "USD", "pnl_pct": 9.5},
+        {"symbol": "DGRW", "qty": 3, "avg_price": 78.2, "price": 82.0, "currency": "USD", "pnl_pct": 4.9},
+        {"symbol": "SCHG", "qty": 4, "avg_price": 24.3, "price": 25.9, "currency": "USD", "pnl_pct": 6.6},
+        {"symbol": "KO", "qty": 2, "avg_price": 66.4, "price": 64.3, "currency": "USD", "pnl_pct": -3.1},
+        {"symbol": "VOO", "qty": 1, "avg_price": 498.2, "price": 520.6, "currency": "USD", "pnl_pct": 4.5},
+        {"symbol": "QQQM", "qty": 1, "avg_price": 190.4, "price": 202.8, "currency": "USD", "pnl_pct": 6.5},
+        {"symbol": "JNJ", "qty": 2, "avg_price": 148.6, "price": 159.8, "currency": "USD", "pnl_pct": 7.5},
+        {"symbol": "MSFT", "qty": 1, "avg_price": 390.0, "price": 438.2, "currency": "USD", "pnl_pct": 12.4},
+        {"symbol": "V", "qty": 1, "avg_price": 298.5, "price": 289.3, "currency": "USD", "pnl_pct": -3.1},
+        {"symbol": "META", "qty": 1, "avg_price": 560.5, "price": 592.4, "currency": "USD", "pnl_pct": 5.7},
+        {"symbol": "BIL", "qty": 3, "avg_price": 91.4, "price": 91.6, "currency": "USD", "pnl_pct": 0.2},
     ]
     for p in rows:
         p["name"] = _nm(p["symbol"])
@@ -118,15 +118,15 @@ TOSS_COST = sum(p["qty"] * p["avg_price"] * FX for p in TOSS_POS)
 # ---------- 한투 실계좌 보유 (라벨 정확: ISA중개형/연금저축/소수점주식) ----------
 def _build_kis():
     rows = [
-        {"account": "ISA중개형", "market": "KR", "symbol": "069500", "qty": 420, "price": 42350, "currency": "KRW", "pnl_pct": 8.2},
-        {"account": "ISA중개형", "market": "KR", "symbol": "229200", "qty": 640, "price": 13480, "currency": "KRW", "pnl_pct": 2.6},
-        {"account": "ISA중개형", "market": "KR", "symbol": "132030", "qty": 260, "price": 18620, "currency": "KRW", "pnl_pct": -4.3},
-        {"account": "연금저축", "market": "KR", "symbol": "091160", "qty": 480, "price": 41250, "currency": "KRW", "pnl_pct": 11.1},
-        {"account": "연금저축", "market": "KR", "symbol": "069500", "qty": 260, "price": 42350, "currency": "KRW", "pnl_pct": -2.8},
-        {"account": "연금저축", "market": "KR", "symbol": "132030", "qty": 350, "price": 18620, "currency": "KRW", "pnl_pct": 0.9},
-        {"account": "소수점주식", "market": "US", "symbol": "VOO", "qty": 6, "price": 520.6, "currency": "USD", "pnl_pct": 6.1},
-        {"account": "소수점주식", "market": "US", "symbol": "MSFT", "qty": 3, "price": 438.2, "currency": "USD", "pnl_pct": 12.4},
-        {"account": "소수점주식", "market": "US", "symbol": "AVGO", "qty": 6, "price": 172.9, "currency": "USD", "pnl_pct": 5.4},
+        {"account": "ISA중개형", "market": "KR", "symbol": "069500", "qty": 32, "price": 42350, "currency": "KRW", "pnl_pct": 8.2},
+        {"account": "ISA중개형", "market": "KR", "symbol": "229200", "qty": 50, "price": 13480, "currency": "KRW", "pnl_pct": 2.6},
+        {"account": "ISA중개형", "market": "KR", "symbol": "132030", "qty": 25, "price": 18620, "currency": "KRW", "pnl_pct": -4.3},
+        {"account": "연금저축", "market": "KR", "symbol": "091160", "qty": 40, "price": 41250, "currency": "KRW", "pnl_pct": 11.1},
+        {"account": "연금저축", "market": "KR", "symbol": "069500", "qty": 20, "price": 42350, "currency": "KRW", "pnl_pct": -2.8},
+        {"account": "연금저축", "market": "KR", "symbol": "132030", "qty": 30, "price": 18620, "currency": "KRW", "pnl_pct": 0.9},
+        {"account": "소수점주식", "market": "US", "symbol": "VOO", "qty": 1, "price": 520.6, "currency": "USD", "pnl_pct": 6.1},
+        {"account": "소수점주식", "market": "US", "symbol": "MSFT", "qty": 1, "price": 438.2, "currency": "USD", "pnl_pct": 12.4},
+        {"account": "소수점주식", "market": "US", "symbol": "AVGO", "qty": 1, "price": 172.9, "currency": "USD", "pnl_pct": 5.4},
     ]
     for p in rows:
         p["name"] = _nm(p["symbol"])
@@ -141,15 +141,15 @@ KIS_COST = sum(p["value_krw"] / (1 + p["pnl_pct"] / 100) for p in KIS_POS)
 
 # ---------- 모의(페이퍼) 보유 ----------
 PAPER_POS = [
-    {"symbol": "VYM", "name": _nm("VYM"), "qty": 310, "market": "US", "price": 129.6, "pnl_pct": 6.2, "value_krw": round(310 * 129.6 * FX), "bucket": "core"},
-    {"symbol": "VOO", "name": _nm("VOO"), "qty": 80, "market": "US", "price": 520.6, "pnl_pct": 3.8, "value_krw": round(80 * 520.6 * FX), "bucket": "core"},
-    {"symbol": "META", "name": _nm("META"), "qty": 18, "market": "US", "price": 592.4, "pnl_pct": 9.1, "value_krw": round(18 * 592.4 * FX), "bucket": "sat"},
-    {"symbol": "AVGO", "name": _nm("AVGO"), "qty": 60, "market": "US", "price": 172.9, "pnl_pct": -6.4, "value_krw": round(60 * 172.9 * FX), "bucket": "exit"},
-    {"symbol": "069500", "name": _nm("069500"), "qty": 1000, "market": "KR", "price": 42350, "pnl_pct": 5.1, "value_krw": 1000 * 42350, "bucket": "core"},
+    {"symbol": "VYM", "name": _nm("VYM"), "qty": 16, "market": "US", "price": 129.6, "pnl_pct": 6.2, "value_krw": round(16 * 129.6 * FX), "bucket": "core"},
+    {"symbol": "VOO", "name": _nm("VOO"), "qty": 4, "market": "US", "price": 520.6, "pnl_pct": 3.8, "value_krw": round(4 * 520.6 * FX), "bucket": "core"},
+    {"symbol": "META", "name": _nm("META"), "qty": 1, "market": "US", "price": 592.4, "pnl_pct": 9.1, "value_krw": round(1 * 592.4 * FX), "bucket": "sat"},
+    {"symbol": "AVGO", "name": _nm("AVGO"), "qty": 3, "market": "US", "price": 172.9, "pnl_pct": -6.4, "value_krw": round(3 * 172.9 * FX), "bucket": "exit"},
+    {"symbol": "069500", "name": _nm("069500"), "qty": 50, "market": "KR", "price": 42350, "pnl_pct": 5.1, "value_krw": 50 * 42350, "bucket": "core"},
 ]
 PAPER_INVESTED = sum(p["value_krw"] for p in PAPER_POS)
-PAPER_INITIAL = 500000000
-PAPER_TOTAL = 500000000 + 18400000  # +약1840만(가상)
+PAPER_INITIAL = 10000000
+PAPER_TOTAL = 10000000 + 368000  # +약36.8만(가상, +3.68%)
 
 
 # ---------- 스크리너 ----------
@@ -216,25 +216,25 @@ NEWS = [
 EXPO = {
     "total": round(TOSS_TOTAL + KIS_VAL), "n": 38, "partial": False, "top5_pct": 41.3,
     "top": [
-        {"symbol": "MSFT", "name": _nm("MSFT"), "krw": 9800000, "pct": 11.2},
-        {"symbol": "AMZN", "name": _nm("AMZN"), "krw": 8100000, "pct": 9.3},
-        {"symbol": "META", "name": _nm("META"), "krw": 7400000, "pct": 8.5},
-        {"symbol": "GOOGL", "name": _nm("GOOGL"), "krw": 5200000, "pct": 6.0},
-        {"symbol": "AVGO", "name": _nm("AVGO"), "krw": 5100000, "pct": 5.9},
-        {"symbol": "LLY", "name": _nm("LLY"), "krw": 4300000, "pct": 4.9},
-        {"symbol": "JPM", "name": _nm("JPM"), "krw": 3800000, "pct": 4.4},
-        {"symbol": "V", "name": _nm("V"), "krw": 3100000, "pct": 3.6},
-        {"symbol": "WMT", "name": _nm("WMT"), "krw": 2600000, "pct": 3.0},
-        {"symbol": "KO", "name": _nm("KO"), "krw": 2400000, "pct": 2.8},
+        {"symbol": "MSFT", "name": _nm("MSFT"), "krw": round((TOSS_TOTAL + KIS_VAL) * 0.112), "pct": 11.2},
+        {"symbol": "AMZN", "name": _nm("AMZN"), "krw": round((TOSS_TOTAL + KIS_VAL) * 0.093), "pct": 9.3},
+        {"symbol": "META", "name": _nm("META"), "krw": round((TOSS_TOTAL + KIS_VAL) * 0.085), "pct": 8.5},
+        {"symbol": "GOOGL", "name": _nm("GOOGL"), "krw": round((TOSS_TOTAL + KIS_VAL) * 0.060), "pct": 6.0},
+        {"symbol": "AVGO", "name": _nm("AVGO"), "krw": round((TOSS_TOTAL + KIS_VAL) * 0.059), "pct": 5.9},
+        {"symbol": "LLY", "name": _nm("LLY"), "krw": round((TOSS_TOTAL + KIS_VAL) * 0.049), "pct": 4.9},
+        {"symbol": "JPM", "name": _nm("JPM"), "krw": round((TOSS_TOTAL + KIS_VAL) * 0.044), "pct": 4.4},
+        {"symbol": "V", "name": _nm("V"), "krw": round((TOSS_TOTAL + KIS_VAL) * 0.036), "pct": 3.6},
+        {"symbol": "WMT", "name": _nm("WMT"), "krw": round((TOSS_TOTAL + KIS_VAL) * 0.030), "pct": 3.0},
+        {"symbol": "KO", "name": _nm("KO"), "krw": round((TOSS_TOTAL + KIS_VAL) * 0.028), "pct": 2.8},
     ],
 }
 
 
 # ---------- 제안 ----------
 PROPOSALS = [
-    {"id": 1, "ts": "2026-07-08 09:12", "symbol": "VYM", "side": "buy", "qty": 15, "currency": "USD", "ref_price": 129.6, "reason": "rebalance 6.4%->8.0%", "status": "pending"},
-    {"id": 2, "ts": "2026-07-08 09:12", "symbol": "AVGO", "side": "sell", "qty": 120, "currency": "USD", "ref_price": 172.9, "reason": "stop_loss -6.4", "status": "pending"},
-    {"id": 3, "ts": "2026-07-07 15:40", "symbol": "069500", "side": "buy", "qty": 40, "currency": "KRW", "ref_price": 42350, "reason": "rebalance 0.0%->5.0%", "status": "pending"},
+    {"id": 1, "ts": "2026-07-08 09:12", "symbol": "VYM", "side": "buy", "qty": 2, "currency": "USD", "ref_price": 129.6, "reason": "rebalance 6.4%->8.0%", "status": "pending"},
+    {"id": 2, "ts": "2026-07-08 09:12", "symbol": "AVGO", "side": "sell", "qty": 8, "currency": "USD", "ref_price": 172.9, "reason": "stop_loss -6.4", "status": "pending"},
+    {"id": 3, "ts": "2026-07-07 15:40", "symbol": "069500", "side": "buy", "qty": 3, "currency": "KRW", "ref_price": 42350, "reason": "rebalance 0.0%->5.0%", "status": "pending"},
 ]
 
 FORECAST = {
@@ -281,51 +281,51 @@ _ASSET_TS = ["2026-{:02d}-{:02d}".format(*_md) for _md in (
 ASSETS = {
     "ts": _ASSET_TS,
     "series": {
-        "전체 자산": _series(112000000, 120500000, _N, [{"at": 9, "mag": 0.02}, {"at": 20, "mag": 0.015}]),
-        "토스(미국)": _series(46000000, 52000000, _N, [{"at": 9, "mag": 0.025}, {"at": 20, "mag": 0.018}]),
-        "ISA": _series(28000000, 31000000, _N, [{"at": 9, "mag": 0.015}, {"at": 20, "mag": 0.012}]),
-        "연금": _series(33000000, 37500000, _N, [{"at": 9, "mag": 0.012}, {"at": 20, "mag": 0.01}]),
+        "전체 자산": _series(11150000, 12000000, _N, [{"at": 9, "mag": 0.02}, {"at": 20, "mag": 0.015}]),
+        "토스(미국)": _series(4300000, 4850000, _N, [{"at": 9, "mag": 0.025}, {"at": 20, "mag": 0.018}]),
+        "ISA": _series(2260000, 2500000, _N, [{"at": 9, "mag": 0.015}, {"at": 20, "mag": 0.012}]),
+        "연금": _series(2700000, 3050000, _N, [{"at": 9, "mag": 0.012}, {"at": 20, "mag": 0.01}]),
     },
 }
 
 
 # ---------- 현금 / 주문 ----------
-CASH = {"KRW": 1284000, "USD": 342.18}
+CASH = {"KRW": 100000, "USD": 28.40}
 ORDERS = [
-    {"at": "07-07 22:31", "side": "BUY", "symbol": "VYM", "qty": 10, "price": 129.55, "amount": 1295.5, "fee": 0.13, "currency": "USD", "pending": False},
-    {"at": "07-07 22:05", "side": "BUY", "symbol": "SCHG", "qty": 8, "price": 25.82, "amount": 206.6, "fee": 0.18, "currency": "USD", "pending": False},
-    {"at": "07-04 23:14", "side": "SELL", "symbol": "KO", "qty": 12, "price": 64.30, "amount": 771.6, "fee": 0.31, "currency": "USD", "pending": False},
-    {"at": "07-03 22:48", "side": "BUY", "symbol": "QQQM", "qty": 6, "price": 202.10, "amount": 1212.6, "fee": 0.14, "currency": "USD", "pending": False},
-    {"at": "07-08 09:01", "side": "BUY", "symbol": "DGRW", "qty": 5, "price": 0, "amount": 0, "fee": 0, "currency": "USD", "pending": True},
-    {"at": "07-01 22:36", "side": "BUY", "symbol": "MSFT", "qty": 2, "price": 430.40, "amount": 860.8, "fee": 0.11, "currency": "USD", "pending": False},
-    {"at": "06-27 22:10", "side": "BUY", "symbol": "BIL", "qty": 20, "price": 91.55, "amount": 1831.0, "fee": 0.00, "currency": "USD", "pending": False},
-    {"at": "06-25 22:52", "side": "SELL", "symbol": "V", "qty": 3, "price": 292.30, "amount": 876.9, "fee": 0.28, "currency": "USD", "pending": False},
-    {"at": "06-23 22:19", "side": "BUY", "symbol": "VOO", "qty": 9, "price": 498.40, "amount": 4485.6, "fee": 0.20, "currency": "USD", "pending": False},
-    {"at": "06-20 22:41", "side": "BUY", "symbol": "META", "qty": 2, "price": 560.50, "amount": 1121.0, "fee": 0.22, "currency": "USD", "pending": False},
-    {"at": "06-18 22:03", "side": "BUY", "symbol": "JNJ", "qty": 4, "price": 152.20, "amount": 608.8, "fee": 0.34, "currency": "USD", "pending": False},
+    {"at": "07-07 22:31", "side": "BUY", "symbol": "VYM", "qty": 2, "price": 129.55, "amount": 259.1, "fee": 0.03, "currency": "USD", "pending": False},
+    {"at": "07-07 22:05", "side": "BUY", "symbol": "SCHG", "qty": 2, "price": 25.82, "amount": 51.6, "fee": 0.04, "currency": "USD", "pending": False},
+    {"at": "07-04 23:14", "side": "SELL", "symbol": "KO", "qty": 1, "price": 64.30, "amount": 64.3, "fee": 0.03, "currency": "USD", "pending": False},
+    {"at": "07-03 22:48", "side": "BUY", "symbol": "QQQM", "qty": 1, "price": 202.10, "amount": 202.1, "fee": 0.02, "currency": "USD", "pending": False},
+    {"at": "07-08 09:01", "side": "BUY", "symbol": "DGRW", "qty": 1, "price": 0, "amount": 0, "fee": 0, "currency": "USD", "pending": True},
+    {"at": "07-01 22:36", "side": "BUY", "symbol": "MSFT", "qty": 1, "price": 430.40, "amount": 430.4, "fee": 0.05, "currency": "USD", "pending": False},
+    {"at": "06-27 22:10", "side": "BUY", "symbol": "BIL", "qty": 2, "price": 91.55, "amount": 183.1, "fee": 0.00, "currency": "USD", "pending": False},
+    {"at": "06-25 22:52", "side": "SELL", "symbol": "V", "qty": 1, "price": 292.30, "amount": 292.3, "fee": 0.09, "currency": "USD", "pending": False},
+    {"at": "06-23 22:19", "side": "BUY", "symbol": "VOO", "qty": 1, "price": 498.40, "amount": 498.4, "fee": 0.02, "currency": "USD", "pending": False},
+    {"at": "06-20 22:41", "side": "BUY", "symbol": "META", "qty": 1, "price": 560.50, "amount": 560.5, "fee": 0.11, "currency": "USD", "pending": False},
+    {"at": "06-18 22:03", "side": "BUY", "symbol": "JNJ", "qty": 1, "price": 152.20, "amount": 152.2, "fee": 0.09, "currency": "USD", "pending": False},
 ]
 KIS_ORDERS = [
-    {"at": "07-08 09:05", "side": "BUY", "side_name": "매수", "account": "ISA중개형", "symbol": "069500", "name": _nm("069500"), "qty": 20, "filled": 0, "price": 42350, "amount": 847000, "pending": True},
-    {"at": "07-07 13:22", "side": "BUY", "side_name": "매수", "account": "연금저축", "symbol": "091160", "name": _nm("091160"), "qty": 30, "filled": 30, "price": 41250, "amount": 1237500, "pending": False},
-    {"at": "07-04 10:41", "side": "SELL", "side_name": "매도", "account": "ISA중개형", "symbol": "229200", "name": _nm("229200"), "qty": 10, "filled": 10, "price": 13600, "amount": 136000, "pending": False},
-    {"at": "07-02 11:08", "side": "BUY", "side_name": "매수", "account": "연금저축", "symbol": "132030", "name": _nm("132030"), "qty": 50, "filled": 50, "price": 18620, "amount": 931000, "pending": False},
-    {"at": "06-30 09:33", "side": "BUY", "side_name": "매수", "account": "ISA중개형", "symbol": "132030", "name": _nm("132030"), "qty": 40, "filled": 40, "price": 18500, "amount": 740000, "pending": False},
-    {"at": "06-26 14:02", "side": "BUY", "side_name": "매수", "account": "연금저축", "symbol": "069500", "name": _nm("069500"), "qty": 15, "filled": 15, "price": 42200, "amount": 633000, "pending": False},
+    {"at": "07-08 09:05", "side": "BUY", "side_name": "매수", "account": "ISA중개형", "symbol": "069500", "name": _nm("069500"), "qty": 2, "filled": 0, "price": 42350, "amount": 84700, "pending": True},
+    {"at": "07-07 13:22", "side": "BUY", "side_name": "매수", "account": "연금저축", "symbol": "091160", "name": _nm("091160"), "qty": 3, "filled": 3, "price": 41250, "amount": 123750, "pending": False},
+    {"at": "07-04 10:41", "side": "SELL", "side_name": "매도", "account": "ISA중개형", "symbol": "229200", "name": _nm("229200"), "qty": 1, "filled": 1, "price": 13600, "amount": 13600, "pending": False},
+    {"at": "07-02 11:08", "side": "BUY", "side_name": "매수", "account": "연금저축", "symbol": "132030", "name": _nm("132030"), "qty": 4, "filled": 4, "price": 18620, "amount": 74480, "pending": False},
+    {"at": "06-30 09:33", "side": "BUY", "side_name": "매수", "account": "ISA중개형", "symbol": "132030", "name": _nm("132030"), "qty": 3, "filled": 3, "price": 18500, "amount": 55500, "pending": False},
+    {"at": "06-26 14:02", "side": "BUY", "side_name": "매수", "account": "연금저축", "symbol": "069500", "name": _nm("069500"), "qty": 1, "filled": 1, "price": 42200, "amount": 42200, "pending": False},
 ]
 
 
 # ---------- 모의 거래내역(페이징) ----------
 PTR_ALL = [
-    {"ts": "07-08 09:31", "symbol": "VYM", "side": "buy", "qty": 120, "filled": 120, "market": "US", "status": "체결", "fill_price": 129.55, "amount_krw": round(120 * 129.55 * FX)},
-    {"ts": "07-08 09:31", "symbol": "META", "side": "buy", "qty": 10, "filled": 10, "market": "US", "status": "체결", "fill_price": 566.40, "amount_krw": round(10 * 566.4 * FX)},
-    {"ts": "07-07 15:20", "symbol": "AVGO", "side": "sell", "qty": 50, "filled": 50, "market": "US", "status": "체결", "fill_price": 174.10, "amount_krw": round(50 * 174.1 * FX)},
-    {"ts": "07-07 09:31", "symbol": "VOO", "side": "buy", "qty": 80, "filled": 80, "market": "US", "status": "체결", "fill_price": 511.10, "amount_krw": round(80 * 511.1 * FX)},
-    {"ts": "07-04 10:02", "symbol": "069500", "side": "buy", "qty": 100, "filled": 100, "market": "KR", "status": "체결", "fill_price": 42000, "amount_krw": 100 * 42000},
-    {"ts": "07-03 09:31", "symbol": "META", "side": "buy", "qty": 8, "filled": 5, "market": "US", "status": "부분체결", "fill_price": 559.90, "amount_krw": round(5 * 559.9 * FX)},
-    {"ts": "07-02 15:38", "symbol": "VYM", "side": "sell", "qty": 40, "filled": 40, "market": "US", "status": "체결", "fill_price": 128.60, "amount_krw": round(40 * 128.6 * FX)},
-    {"ts": "07-01 09:31", "symbol": "AVGO", "side": "buy", "qty": 60, "filled": 0, "market": "US", "status": "미체결", "fill_price": None, "amount_krw": None},
-    {"ts": "06-30 10:14", "symbol": "VOO", "side": "buy", "qty": 30, "filled": 30, "market": "US", "status": "체결", "fill_price": 498.90, "amount_krw": round(30 * 498.9 * FX)},
-    {"ts": "06-27 09:31", "symbol": "069500", "side": "sell", "qty": 60, "filled": 60, "market": "KR", "status": "체결", "fill_price": 41500, "amount_krw": 60 * 41500},
+    {"ts": "07-08 09:31", "symbol": "VYM", "side": "buy", "qty": 10, "filled": 10, "market": "US", "status": "체결", "fill_price": 129.55, "amount_krw": round(10 * 129.55 * FX)},
+    {"ts": "07-08 09:31", "symbol": "META", "side": "buy", "qty": 1, "filled": 1, "market": "US", "status": "체결", "fill_price": 566.40, "amount_krw": round(1 * 566.4 * FX)},
+    {"ts": "07-07 15:20", "symbol": "AVGO", "side": "sell", "qty": 4, "filled": 4, "market": "US", "status": "체결", "fill_price": 174.10, "amount_krw": round(4 * 174.1 * FX)},
+    {"ts": "07-07 09:31", "symbol": "VOO", "side": "buy", "qty": 6, "filled": 6, "market": "US", "status": "체결", "fill_price": 511.10, "amount_krw": round(6 * 511.1 * FX)},
+    {"ts": "07-04 10:02", "symbol": "069500", "side": "buy", "qty": 8, "filled": 8, "market": "KR", "status": "체결", "fill_price": 42000, "amount_krw": 8 * 42000},
+    {"ts": "07-03 09:31", "symbol": "META", "side": "buy", "qty": 2, "filled": 1, "market": "US", "status": "부분체결", "fill_price": 559.90, "amount_krw": round(1 * 559.9 * FX)},
+    {"ts": "07-02 15:38", "symbol": "VYM", "side": "sell", "qty": 3, "filled": 3, "market": "US", "status": "체결", "fill_price": 128.60, "amount_krw": round(3 * 128.6 * FX)},
+    {"ts": "07-01 09:31", "symbol": "AVGO", "side": "buy", "qty": 5, "filled": 0, "market": "US", "status": "미체결", "fill_price": None, "amount_krw": None},
+    {"ts": "06-30 10:14", "symbol": "VOO", "side": "buy", "qty": 2, "filled": 2, "market": "US", "status": "체결", "fill_price": 498.90, "amount_krw": round(2 * 498.9 * FX)},
+    {"ts": "06-27 09:31", "symbol": "069500", "side": "sell", "qty": 5, "filled": 5, "market": "KR", "status": "체결", "fill_price": 41500, "amount_krw": 5 * 41500},
 ]
 
 
@@ -333,28 +333,28 @@ PTR_ALL = [
 REALIZED = {
     "fx": FX,
     "accounts": {
-        "토스(나)": {"total_krw": 2360000, "daily": {}, "monthly": {},
+        "토스(나)": {"total_krw": 180000, "daily": {}, "monthly": {},
             "sells": [
-                {"month": "2026-07", "date": "2026-07-04", "symbol": "KO", "qty": 12, "buy_avg": 66.60, "sell_price": 64.30, "currency": "USD", "realized": -27.6, "realized_krw": -38226},
-                {"month": "2026-06", "date": "2026-06-25", "symbol": "V", "qty": 3, "buy_avg": 282.40, "sell_price": 292.30, "currency": "USD", "realized": 29.7, "realized_krw": 411345},
-                {"month": "2026-06", "date": "2026-06-11", "symbol": "DGRW", "qty": 20, "buy_avg": 78.90, "sell_price": 82.20, "currency": "USD", "realized": 66.0, "realized_krw": 914100},
-                {"month": "2026-05", "date": "2026-05-19", "symbol": "VYM", "qty": 30, "buy_avg": 116.80, "sell_price": 119.40, "currency": "USD", "realized": 78.0, "realized_krw": 1080300},
+                {"month": "2026-07", "date": "2026-07-04", "symbol": "KO", "qty": 1, "buy_avg": 66.60, "sell_price": 64.30, "currency": "USD", "realized": -2.3, "realized_krw": -3185},
+                {"month": "2026-06", "date": "2026-06-25", "symbol": "V", "qty": 1, "buy_avg": 282.40, "sell_price": 292.30, "currency": "USD", "realized": 9.9, "realized_krw": 13712},
+                {"month": "2026-06", "date": "2026-06-11", "symbol": "DGRW", "qty": 2, "buy_avg": 78.90, "sell_price": 82.20, "currency": "USD", "realized": 6.6, "realized_krw": 9141},
+                {"month": "2026-05", "date": "2026-05-19", "symbol": "VYM", "qty": 2, "buy_avg": 116.80, "sell_price": 119.40, "currency": "USD", "realized": 5.2, "realized_krw": 7202},
             ]},
-        "한투": {"total_krw": 1720000, "daily": {}, "monthly": {},
+        "한투": {"total_krw": 130000, "daily": {}, "monthly": {},
             "sells": [
-                {"month": "2026-07", "date": "2026-07-04", "symbol": "229200", "qty": 10, "buy_avg": 13000, "sell_price": 13600, "currency": "KRW", "realized": 6000, "realized_krw": 6000},
-                {"month": "2026-06", "date": "2026-06-18", "symbol": "069500", "qty": 80, "buy_avg": 40200, "sell_price": 41500, "currency": "KRW", "realized": 104000, "realized_krw": 104000},
-                {"month": "2026-05", "date": "2026-05-22", "symbol": "091160", "qty": 120, "buy_avg": 39900, "sell_price": 41000, "currency": "KRW", "realized": 132000, "realized_krw": 132000},
+                {"month": "2026-07", "date": "2026-07-04", "symbol": "229200", "qty": 1, "buy_avg": 13000, "sell_price": 13600, "currency": "KRW", "realized": 600, "realized_krw": 600},
+                {"month": "2026-06", "date": "2026-06-18", "symbol": "069500", "qty": 6, "buy_avg": 40200, "sell_price": 41500, "currency": "KRW", "realized": 7800, "realized_krw": 7800},
+                {"month": "2026-05", "date": "2026-05-22", "symbol": "091160", "qty": 9, "buy_avg": 39900, "sell_price": 41000, "currency": "KRW", "realized": 9900, "realized_krw": 9900},
             ]},
-        "모의": {"total_krw": 4180000, "daily": {}, "monthly": {},
+        "모의": {"total_krw": 320000, "daily": {}, "monthly": {},
             "sells": [
-                {"month": "2026-07", "date": "2026-07-07", "symbol": "AVGO", "qty": 50, "buy_avg": 176.80, "sell_price": 174.10, "currency": "USD", "realized": -135.0, "realized_krw": -186975},
-                {"month": "2026-07", "date": "2026-07-02", "symbol": "VYM", "qty": 40, "buy_avg": 126.40, "sell_price": 128.60, "currency": "USD", "realized": 88.0, "realized_krw": 121880},
-                {"month": "2026-06", "date": "2026-06-27", "symbol": "069500", "qty": 60, "buy_avg": 40100, "sell_price": 41500, "currency": "KRW", "realized": 84000, "realized_krw": 84000},
-                {"month": "2026-06", "date": "2026-06-13", "symbol": "META", "qty": 30, "buy_avg": 508.0, "sell_price": 524.0, "currency": "USD", "realized": 480.0, "realized_krw": 664800},
+                {"month": "2026-07", "date": "2026-07-07", "symbol": "AVGO", "qty": 4, "buy_avg": 176.80, "sell_price": 174.10, "currency": "USD", "realized": -10.8, "realized_krw": -14958},
+                {"month": "2026-07", "date": "2026-07-02", "symbol": "VYM", "qty": 3, "buy_avg": 126.40, "sell_price": 128.60, "currency": "USD", "realized": 6.6, "realized_krw": 9141},
+                {"month": "2026-06", "date": "2026-06-27", "symbol": "069500", "qty": 5, "buy_avg": 40100, "sell_price": 41500, "currency": "KRW", "realized": 7000, "realized_krw": 7000},
+                {"month": "2026-06", "date": "2026-06-13", "symbol": "META", "qty": 2, "buy_avg": 508.0, "sell_price": 524.0, "currency": "USD", "realized": 32.0, "realized_krw": 44320},
             ]},
     },
-    "total": {"daily": {}, "monthly": {}, "total_krw": 8260000},
+    "total": {"daily": {}, "monthly": {}, "total_krw": 630000},
 }
 
 
@@ -433,14 +433,14 @@ def _portfolio_resp(who):
     if who == "spouse":  # 남편 = 토스만(간단 버전)
         pos = TOSS_POS[:5]
         tot = sum(p["value_krw"] for p in pos)
-        return {"broker": "toss", "fx": FX, "cash": 540000, "total_krw": tot,
+        return {"broker": "toss", "fx": FX, "cash": 45000, "total_krw": tot,
                 "daily_pnl_pct": 0.6, "total_pnl_pct": 5.2,
                 "daily_pnl_amt_krw": round(tot * 0.006),
                 "total_pnl_amt_krw": round(tot * 0.052 / 1.052),
                 "positions": pos}
-    return {"broker": "toss", "fx": FX, "cash": 1284000, "total_krw": TOSS_TOTAL + 1284000,
+    return {"broker": "toss", "fx": FX, "cash": 100000, "total_krw": TOSS_TOTAL + 100000,
             "daily_pnl_pct": 0.9, "total_pnl_pct": _round2((TOSS_TOTAL / TOSS_COST - 1) * 100),
-            "daily_pnl_amt_krw": round((TOSS_TOTAL + 1284000) * 0.009),
+            "daily_pnl_amt_krw": round((TOSS_TOTAL + 100000) * 0.009),
             "total_pnl_amt_krw": round(TOSS_TOTAL - TOSS_COST),
             "positions": TOSS_POS}
 
@@ -468,13 +468,13 @@ def _volume_resp(syms):
 
 def _kis_resp():
     val, cost = KIS_VAL, KIS_COST
-    return {"total": val + 2100000, "cash_krw": 2100000, "fx": FX, "positions": KIS_POS,
+    return {"total": val + 200000, "cash_krw": 200000, "fx": FX, "positions": KIS_POS,
             "total_pnl_pct": _round2((val / cost - 1) * 100), "total_pnl_amt_krw": round(val - cost),
-            "daily_pnl_amt_krw": 214000, "daily_pnl_pct": 0.35}
+            "daily_pnl_amt_krw": 16000, "daily_pnl_pct": 0.35}
 
 
 def _paper_resp():
-    hist_series = _series(485000000, 518400000, _N, [{"at": 9, "mag": 0.02}, {"at": 20, "mag": 0.015}])
+    hist_series = _series(9700000, 10368000, _N, [{"at": 9, "mag": 0.02}, {"at": 20, "mag": 0.015}])
     return {"cash": PAPER_TOTAL - PAPER_INVESTED, "total": PAPER_TOTAL, "invested": PAPER_INVESTED,
             "initial": PAPER_INITIAL, "ret_pct": _round2((PAPER_TOTAL / PAPER_INITIAL - 1) * 100),
             "positions": PAPER_POS,
