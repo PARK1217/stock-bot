@@ -50,7 +50,11 @@
 
   /* 레이아웃 */
   .wrap{padding:14px;display:grid;gap:14px;grid-template-columns:1fr;max-width:1180px;margin:0 auto;
-    padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+    padding-bottom:calc(76px + env(safe-area-inset-bottom))}   /* 쉬운용어 FAB가 마지막 내용 가리지 않게 */
+  /* 쉬운 용어 플로팅 버튼 — 스크롤 중 흐려져 글자 가림 최소화, 멈추면 복귀 */
+  #glossBtn{transition:opacity .25s ease, transform .25s ease; opacity:.9}
+  #glossBtn:hover{opacity:1}
+  #glossBtn.scrolling{opacity:.12; transform:translateY(6px) scale(.95)}
   @media(min-width:880px){.wrap{grid-template-columns:1fr 1fr}.span2{grid-column:1/-1}}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
   .card>h2{font-size:14px;margin:0;padding:14px 16px;border-bottom:1px solid var(--line);letter-spacing:-.2px;
@@ -1243,6 +1247,13 @@ function renderGloss(){
     <div style="margin-top:3px;line-height:1.55">${GLOSS[k]}</div></div>`).join('')
     :'<div style="color:var(--mut);padding:16px 0">검색 결과가 없어요</div>';
 }
+// 쉬운용어 FAB: 스크롤 중엔 흐려져 밑 글자 보이게, 멈추면 복귀(모달 열려있으면 유지)
+(function(){var gb=document.getElementById('glossBtn'),t;if(!gb)return;
+  addEventListener('scroll',function(){
+    if(document.getElementById('glossModal').style.display==='flex')return;
+    gb.classList.add('scrolling');clearTimeout(t);
+    t=setTimeout(function(){gb.classList.remove('scrolling');},600);
+  },{passive:true});})();
 </script>
 </body>
 </html>
