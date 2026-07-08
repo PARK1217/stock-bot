@@ -111,6 +111,14 @@
   .help-btn:active{transform:scale(.94)}
   .help-box{padding:11px 14px;border-bottom:1px solid var(--line);font-size:12px;line-height:1.65;
     color:#b8bfca;background:#15181e}
+  /* 예측 기록 필터 */
+  .pfil{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line)}
+  .pfil .lbl{font-size:11px;color:var(--mut)}
+  .pfil button{background:#1a1e26;border:1px solid var(--line);color:var(--mut);border-radius:7px;
+    padding:4px 10px;font-size:11.5px;cursor:pointer}
+  .pfil button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .pfil select{background:#11141a;border:1px solid var(--line);color:var(--fg);border-radius:7px;
+    padding:4px 8px;font-size:11.5px}
   .help-box .k{color:var(--fg);font-weight:600} .help-box .row-h{margin-top:5px}
   .chat-msgs{max-height:360px;overflow-y:auto}
   .chat-m{padding:9px 14px;font-size:13.5px;line-height:1.65;border-bottom:1px solid var(--line)}
@@ -336,6 +344,7 @@
     <div class="help-box">종목마다 <b class="k">7·14·21영업일</b> 세 기간을 동시에 예측해요. 그래서 같은 종목이 3개씩 보이고,
       <b class="k">기간이 길수록 기대수익·상승확률·기준가</b>가 달라집니다(다른 날 만든 예측이면 기준가도 다름).
       단기(7일)부터 빨리 검증돼요.</div>
+    <div id="pred-ctrl" class="pfil"></div>
     <div id="pred"><div class="empty">—</div></div>
   </div>
 </div>
@@ -728,29 +737,53 @@ function fillForecast(p,f){                              // 종목 예측(f)을 
 }
 
 // ---------- 예측 기록 ----------
+let PRED=[], PREDHZ='all', PREDDATE='latest';        // 예측 기록 + 필터상태(기간/날짜)
 async function loadPred(){
   const [d,a]=await Promise.all([j('/api/predictions'),j('/api/accuracy')]);
   if(a&&a.evaluated)document.getElementById('acc').textContent=
     `방향 ${Math.round(a.dir_acc*100)}% · 범위 ${Math.round(a.band_acc*100)}% (n=${a.evaluated})`;
-  const b=document.getElementById('pred');
+  PRED=d||[];
+  buildPredCtrl(); renderPred();
+}
+function predDates(){return [...new Set(PRED.map(p=>(p.made_at||'').slice(0,10)).filter(Boolean))].sort().reverse();}
+function buildPredCtrl(){
+  const c=document.getElementById('pred-ctrl'); if(!c)return;
+  const hz=[['all','전체'],['7','7일'],['14','14일'],['21','21일']]
+    .map(([v,t])=>`<button class="${PREDHZ===v?'on':''}" onclick="setPredHz('${v}')">${t}</button>`).join('');
+  const opts=['<option value="latest">최근 예측일</option>','<option value="all">전체 날짜</option>']
+    .concat(predDates().map(dt=>`<option value="${dt}">${dt}</option>`)).join('');
+  c.innerHTML=`<span class="lbl">기간</span>${hz}`
+    +`<span class="lbl" style="margin-left:8px">날짜</span><select onchange="setPredDate(this.value)">${opts}</select>`;
+  const sel=c.querySelector('select'); if(sel)sel.value=PREDDATE;
+}
+function setPredHz(h){PREDHZ=h;buildPredCtrl();renderPred();}
+function setPredDate(v){PREDDATE=v;renderPred();}
+function renderPred(){
+  const b=document.getElementById('pred'); if(!b)return;
   const held=heldSyms();
-  // 보유 먼저 → 종목끼리 묶고 → 최신 예측일 → 기간(7·14·21) 순. 같은 종목 3개(기간)가 나란히 보이게.
-  const sorted=(d||[]).slice().sort((x,y)=>
+  const dates=predDates(), dsel=(PREDDATE==='latest')?(dates[0]||''):PREDDATE;
+  let rows=PRED.slice();
+  if(PREDHZ!=='all')rows=rows.filter(p=>String(p.horizon_days)===PREDHZ);
+  if(PREDDATE!=='all')rows=rows.filter(p=>(p.made_at||'').slice(0,10)===dsel);
+  // 보유 먼저 → 종목 → 최신예측일 → 기간(7·14·21)
+  rows.sort((x,y)=>
     (held.has(y.symbol)?1:0)-(held.has(x.symbol)?1:0)
     || (x.symbol<y.symbol?-1:x.symbol>y.symbol?1:0)
     || String(y.made_at||'').localeCompare(String(x.made_at||''))
     || (x.horizon_days||0)-(y.horizon_days||0));
-  b.innerHTML=sorted.length?sorted.slice(0,15).map(p=>{
+  const cap=(PREDDATE!=='all')?60:15;                 // 특정날짜면 그날 전부, 전체날짜면 15개
+  b.innerHTML=rows.length?rows.slice(0,cap).map(p=>{
     const hd=held.has(p.symbol);
     const own=hd?'<span class="tag hold">보유</span>':'<span class="tag" style="opacity:.55">관심</span>';
     const hz=`<span class="tag" style="background:#1c2740;color:#8fb6ff" title="예측 기간(영업일)">${p.horizon_days||'?'}일</span>`;
     const day=(p.made_at||'').slice(0,10);
+    const showDay=(PREDDATE==='all');                 // 전체날짜일 때만 각 행에 날짜 표기
     return `<div class="row"${hd?'':' style="opacity:.7"'}><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nmTag(p.symbol)}
        ${own}${hz}<span class="tag">${esc(p.status||'')}</span></div>
-       <div class="row-s num">${day?`<span class="mut">${day} 예측</span> · `:''}기준 ${nf(p.base_price)} · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span>
+       <div class="row-s num">${showDay&&day?`<span class="mut">${day} 예측</span> · `:''}기준 ${nf(p.base_price)} · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span>
          ${p.actual_return!=null?` · 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span>`:''}</div></div>
      <div class="row-r"><div class="v num">${Math.round(p.prob_up*100)}%</div><div class="v2 mut">상승확률(${p.horizon_days||'?'}일)</div></div></div>`;}).join('')
-    :'<div class="empty">예측 기록 없음 (스케줄 가동 후 누적)</div>';
+    :'<div class="empty">해당 조건의 예측이 없어요.</div>';
 }
 
 // ---------- 예측 검증(자기채점) ----------
