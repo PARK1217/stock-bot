@@ -587,7 +587,32 @@ def research(symbol: str, market: str) -> dict:
     except Exception:  # noqa: BLE001
         log.warning("%s 감성 조회 실패", symbol)
 
-    # 캔들 → 추세 + 예측
+    # 웹/소셜 반응 — Tavily(US+웹) + 네이버 뉴스·블로그(KR). 예측 blend 입력으로도 씀 → 먼저 수집
+    try:
+        result["reactions"] = _reactions(symbol, name, market)
+    except Exception:  # noqa: BLE001
+        log.warning("%s 웹반응 검색 실패", symbol)
+
+    # 반응 감성(FinBERT) → 뉴스/공시 감성과 결합해 예측 신호로 blend
+    reaction_score = 0.0
+    try:
+        from bot.sentiment import finbert_scores
+        rtexts = [f"{r.get('title', '')} {r.get('content', '')}".strip()
+                  for r in (result["reactions"] or [])][:6]
+        rs = finbert_scores([t for t in rtexts if t]) if rtexts else None
+        if rs:
+            reaction_score = sum(s for _, s in rs) / len(rs)
+    except Exception:  # noqa: BLE001
+        log.warning("%s 반응 감성 실패", symbol)
+    if news_score and reaction_score:
+        blended_sent = 0.6 * news_score + 0.4 * reaction_score
+    else:
+        blended_sent = news_score or reaction_score
+    result["signal"] = {"news": round(news_score, 3),
+                        "reaction": round(reaction_score, 3),
+                        "blended": round(blended_sent, 3)}
+
+    # 캔들 → 추세 + 예측 (그래프 + 뉴스/공시 + 웹반응 결합 신호로 몬테카를로 틸트)
     candles = _get_candles(symbol, market)
     try:
         result["trend"] = _trend_from_candles(candles)
@@ -601,7 +626,7 @@ def research(symbol: str, market: str) -> dict:
             from bot.main import _technical_tilt
             fc = forecast_symbol(symbol, closes, 21,
                                  technical_tilt=_technical_tilt(closes),
-                                 news_sentiment=news_score)
+                                 news_sentiment=blended_sent)
             if fc is not None:
                 result["forecast"] = {
                     "prob_up": fc.prob_up, "exp_return": fc.exp_return,
@@ -612,14 +637,8 @@ def research(symbol: str, market: str) -> dict:
     except Exception:  # noqa: BLE001
         log.warning("%s 예측 실패", symbol)
 
-    # 웹/소셜 반응 — Tavily(US+웹) + 네이버 뉴스·블로그(KR)
     try:
-        result["reactions"] = _reactions(symbol, name, market)
-    except Exception:  # noqa: BLE001
-        log.warning("%s 웹반응 검색 실패", symbol)
-
-    try:
-        _r.setex(ck, 1800, json.dumps(result, default=str))
+        _r.setex(ck, 600, json.dumps(result, default=str))   # 10분(지연 단축)
     except Exception:  # noqa: BLE001
         pass
     return result

@@ -1017,8 +1017,8 @@ def chat(body: dict):
         "3) 단정/보장 금지. '참고이며 최종 결정과 책임은 본인'임을 의식하되 매 답변에 길게 면책 달지 말 것.\n"
         "4) 과거와 미래를 반드시 구분: '과거에 N% 올랐다(=이미 지난 일)'와 '앞으로 모델 추정 N%/"
         "상승확률 N%(=예측)'를 헷갈리지 않게 따로 말한다.\n"
-        "5) [완전 주린이용] 한 번에 핵심 2~3개만(쏟아내지 말 것). 따뜻하고 격려하는 말투로. "
-        "답변 맨 끝에 반드시 '👉 쉽게 말하면: …' 한 줄 요약을 붙인다. 한국어 불릿.\n"
+        "5) [간결·주린이용] 짧게! 핵심 2~3개 불릿(각 1줄)만, 전체 5~6줄 이내로 압축(장황 금지). "
+        "따뜻한 말투. 답변 맨 끝에 반드시 '👉 쉽게 말하면: …' 한 줄 요약.\n"
         "6) [종목 리서치 블록이 있으면] 그래프 기반 모델 상승확률·뉴스/공시 감성·웹반응 세 신호를 "
         "각각 짚고 종합해 '📊 종합 전망' 한 줄을 낸다(신호가 엇갈리면 그 점을 명시). 단정 아닌 확률로.\n\n"
         f"[현재 데이터]\n{ctx}\n\n[대화]{convo}\n사용자: {msg}\n분석봇:")
@@ -1032,7 +1032,7 @@ def chat(body: dict):
         from bot import chateval
         from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST, SINGLE_US, SINGLE_KR
         from bot import names as N
-        res = chateval.llm_call(prompt, max_tokens=900)
+        res = chateval.llm_call(prompt, max_tokens=600)   # 간결화
         reply = res.get("text")
         sys_prompt = prompt.split("\n\n[현재 데이터]\n")[0]   # 지침부 = 시스템 프롬프트(실제 데이터 마커로 분리)
         known = list(set(DEFAULT_WATCHLIST + KR_WATCHLIST + SINGLE_US + SINGLE_KR)
