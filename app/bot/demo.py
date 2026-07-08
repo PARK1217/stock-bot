@@ -381,6 +381,54 @@ CHAT_REPLY = (
 )
 
 
+# ---------- 데모 실엔진 챗봇용: 합성 포트폴리오 컨텍스트 ----------
+def demo_top_holdings(n: int = 3):
+    """데모 합성 보유 상위 [(symbol, market)] — 데모 챗봇 포트폴리오 자동리서치용(실계좌 미접근)."""
+    rows = [(p["symbol"], "US", p["value_krw"]) for p in TOSS_POS]
+    rows += [(p["symbol"], p.get("market", "KR"), p["value_krw"]) for p in KIS_POS]
+    rows.sort(key=lambda r: -r[2])
+    seen, out = set(), []
+    for sym, mk, _ in rows:
+        if sym in seen:
+            continue
+        seen.add(sym)
+        out.append((sym, mk))
+        if len(out) >= n:
+            break
+    return out
+
+
+def demo_chat_context() -> str:
+    """데모 챗봇이 LLM에 넘길 '합성 포트폴리오' 컨텍스트(실계좌 _chat_context 대체).
+    실제 보유/금액은 절대 노출하지 않고 데모 합성 숫자만 사용한다."""
+    L = ["[※ 데모 계정 — 아래 보유·금액은 모두 예시(합성) 데이터입니다]"]
+    toss_tot = TOSS_TOTAL
+    L.append(f"[토스(미국) 총 {round(toss_tot):,}원, 오늘 +0.6% / 전체 +7.1%]")
+    for x in sorted(TOSS_POS, key=lambda z: -z["value_krw"])[:8]:
+        L.append(f"  - {x['symbol']}({x.get('name','')}) {x['qty']:g}주 수익률 {x['pnl_pct']}% "
+                 f"평가 {round(x['value_krw']):,}원")
+    L.append(f"[한투 실계좌(데모) 총 {round(KIS_VAL):,}원]")
+    for x in KIS_POS:
+        L.append(f"  - [{x['account']}] {x['symbol']}({x.get('name','')}) {x['qty']:g}주 {x['pnl_pct']}%")
+    L.append("[미국 추세 스크리너 상위(점수=상승세 순위, 매수신호 아님)]")
+    for r in SCN_US[:6]:
+        L.append(f"  - {r['symbol']} 점수 {r['score']} (1M {r['ret_1m']}% 3M {r['ret_3m']}%)")
+    L.append("[국내(KR) 추세 스크리너 상위]")
+    for r in SCN_KR[:4]:
+        L.append(f"  - {r['symbol']} 점수 {r['score']} (1M {r['ret_1m']}% 3M {r['ret_3m']}%)")
+    L.append(f"[모델 예측 적중률(실측): 방향 {CHATEVAL['accuracy']['acc']*100:.0f}% "
+             f"(표본 {CHATEVAL['accuracy']['n']}건). 50%대면 동전던지기 수준이니 참고만]")
+    L.append(f"[★스크리너 신뢰도: {BACKTEST['grade']} (IC {BACKTEST['ic']}). "
+             f"점수 높은 종목 1개월 뒤 평균 {BACKTEST['high_avg']}% vs 낮은 종목 {BACKTEST['low_avg']}% "
+             f"→ 이 배당/인컴 ETF군은 점수 추격매수 부적합]")
+    L.append(f"[실질 노출(ETF 룩스루): 상위5 {EXPO['top5_pct']}% 집중 — "
+             + ", ".join(f"{t['symbol']} {t['pct']}%" for t in EXPO['top'][:5])
+             + ". 여러 ETF여도 실제론 이 기업들에 노출(분산 착시 주의)]")
+    L.append("[계좌 매매제약] 연금저축=국내상장 비레버리지 ETF/ETN만. "
+             "ISA중개형=국내상장 개별주/ETF. 소수점=해외포함 자유. 미국상장은 소수점·일반만(연금·ISA 직접매수 불가).")
+    return "\n".join(L)
+
+
 # ---------- RAG: 챗봇 정확도(chateval) / 이슈 히스토리 ----------
 # 서버 chateval.report() 형태: {"accuracy": {n,hit,acc,open}, "calls": [...], "log": [...]}
 CHATEVAL = {

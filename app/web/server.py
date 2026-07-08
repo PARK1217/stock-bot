@@ -41,6 +41,7 @@ _AUTH_TOKEN = hashlib.sha256(f"stockbot::{_PW}".encode()).hexdigest()[:40] if _P
 # 데모(포트폴리오) 로그인 — 별도 토큰. 이 쿠키로는 /api가 합성데이터만 반환(실계좌 미도달).
 _DEMO_PW = settings.demo_password
 _DEMO_TOKEN = hashlib.sha256(f"stockbot::demo::{_DEMO_PW}".encode()).hexdigest()[:40] if _DEMO_PW else ""
+_DEMO_CHAT_CAP = 40   # 데모 챗봇 시간당 총 호출 상한(공용 API키 남용/할당량 소진 방지)
 _LOGIN_HTML = """<!doctype html><html lang=ko><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>stock-bot</title>
@@ -102,6 +103,10 @@ async def _auth(request: Request, call_next):
     if _DEMO_TOKEN and hmac.compare_digest(request.cookies.get(_AUTH_COOKIE) or "", _DEMO_TOKEN):
         # 데모 세션: /api는 합성데이터로 가로채(실 KIS/토스/DB 미도달), HTML·정적은 실제 그대로 서빙
         if path.startswith("/api/"):
+            # 챗봇만 예외 — 실 분석엔진 가동(단 합성 포트폴리오·저장/중복 제외·시간당 캡). state로 표시.
+            if path == "/api/chat" and request.method == "POST":
+                request.state.demo = True
+                return await call_next(request)
             from bot.demo import demo_api
             body = None
             if request.method not in ("GET", "HEAD"):
@@ -973,6 +978,16 @@ _PORT_KW = ("포트폴리오", "전체", "분산", "비중", "리밸런", "뭐 �
             "뭐 사", "뭐사", "뭘 사", "뭘사", "점검", "분석해줘", "정리해")
 
 
+def _demo_chat_context() -> str:
+    from bot.demo import demo_chat_context
+    return demo_chat_context()
+
+
+def _demo_top_holdings(n: int = 3):
+    from bot.demo import demo_top_holdings
+    return demo_top_holdings(n)
+
+
 def _top_holdings(who: str = "me", n: int = 3) -> list[tuple[str, str]]:
     """평가금액 상위 보유종목 [(symbol, market)] — 포트폴리오 자동리서치용. 토스(미국) 우선 + 한투(KR)."""
     out: list[tuple[str, str]] = []
@@ -1001,13 +1016,28 @@ def _top_holdings(who: str = "me", n: int = 3) -> list[tuple[str, str]]:
     return res
 
 
+def _demo_rate_ok() -> bool:
+    """데모 챗봇 시간당 총 호출 상한 체크(공용 키 보호). 초과면 False."""
+    try:
+        from datetime import datetime as _dt
+        k = "demo:chat:" + _dt.now().strftime("%Y%m%d%H")
+        n = _r.incr(k)
+        if n == 1:
+            _r.expire(k, 3700)
+        return n <= _DEMO_CHAT_CAP
+    except Exception:  # noqa: BLE001
+        return True   # 레이트리밋 인프라 오류 시엔 막지 않음
+
+
 @app.post("/api/chat")
-def chat(body: dict):
-    """투자 분석 챗봇 — 현재 데이터 근거로 답변(참고용). Chat 2.0: 세션 영속·중복합치기·평가."""
+def chat(body: dict, request: Request):
+    """투자 분석 챗봇 — 현재 데이터 근거로 답변(참고용). Chat 2.0: 세션 영속·중복합치기·평가.
+    데모(request.state.demo)면 실 분석엔진을 합성 포트폴리오로 돌리되 저장/중복/chateval 제외·시간당 캡."""
     msg = (body.get("message") or "").strip()
     if not msg:
         return {"reply": "질문을 입력해 주세요."}
-    who = "spouse" if body.get("who") == "spouse" else "me"
+    demo = bool(getattr(request.state, "demo", False))
+    who = "spouse" if (body.get("who") == "spouse" and not demo) else "me"
     try:
         session_id = int(body.get("session_id")) if body.get("session_id") else None
     except (TypeError, ValueError):
@@ -1015,8 +1045,21 @@ def chat(body: dict):
     history = body.get("history")
     history = history[-6:] if isinstance(history, list) else []
 
+    if demo and not _demo_rate_ok():
+        return {"reply": "데모 챗봇은 지금 이용량이 많아 잠시 쉬고 있어요 🙏 (공용 API 보호를 위한 시간당 제한)\n"
+                         "잠시 후 다시 시도하거나, 실제 분석은 직접 배포해 확인해보세요!",
+                "cached": False, "session_id": 1, "message_id": None}
+
     def _finish(reply, cached=False):
-        """모든 반환 경로 공통 — Postgres 세션에 턴 저장 + 메시지 id 반환(평가용)."""
+        """반환 공통 — 실계정은 Postgres 저장, 데모는 저장 안 함(합성·격리)."""
+        if demo:
+            mid = None
+            try:
+                mid = _r.incr("demo:msgid")
+            except Exception:  # noqa: BLE001
+                pass
+            return {"reply": reply or "분석에 실패했어요. 잠시 후 다시 시도해 주세요.",
+                    "cached": cached, "session_id": 1, "message_id": mid, "demo": True}
         ids = {}
         try:
             from bot import chatstore
@@ -1027,8 +1070,8 @@ def chat(body: dict):
                 "cached": cached, "session_id": ids.get("session_id", session_id),
                 "message_id": ids.get("bot_id")}
 
-    # 중복 질문 합치기 — 맥락 없는 단독 질문이 6h 내 동일했으면 이전 답변 재사용(durable)
-    if not history:
+    # 중복 질문 합치기 — 실계정만(데모는 실 DB 조회 금지=격리). 맥락 없는 단독 동일질문 6h 재사용.
+    if not demo and not history:
         try:
             from bot import chatstore
             dup = chatstore.find_recent_answer(who, msg)
@@ -1037,7 +1080,7 @@ def chat(body: dict):
         except Exception:  # noqa: BLE001
             pass
 
-    ctx = _chat_context(who)
+    ctx = _demo_chat_context() if demo else _chat_context(who)
     ticker_found = False
     try:                                    # 질문 종목 감지: 애매하면 되묻고, 특정되면 온디맨드 리서치 주입
         from bot import research
@@ -1054,8 +1097,8 @@ def chat(body: dict):
             ask = ("어떤 종목을 말씀하시는지 확인하고 싶어요 🙂\n" + "\n".join(parts)
                    + "\n\n👉 정확한 종목명이나 6자리 코드로 알려주시면 바로 분석해드릴게요!")
             return _finish(ask)
-        for t in rq["confident"][:2]:       # 특정된 종목(보유 무관) 풀 리서치 주입
-            blk = research.research_block(t["symbol"], t["market"])
+        for t in rq["confident"][:2]:       # 특정된 종목(보유 무관) 리서치 주입(데모=light: 웹반응 생략)
+            blk = research.research_block(t["symbol"], t["market"], light=demo)
             if blk:
                 ctx += "\n\n" + blk
                 ticker_found = True
@@ -1066,7 +1109,8 @@ def chat(body: dict):
     if not ticker_found and any(k in msg for k in _PORT_KW):
         try:
             from bot import research
-            for sym, mk in _top_holdings(who, 3):
+            tops = _demo_top_holdings(3) if demo else _top_holdings(who, 3)
+            for sym, mk in tops:
                 blk = research.research_block(sym, mk, light=True)
                 if blk:
                     ctx += "\n\n" + blk
@@ -1095,7 +1139,7 @@ def chat(body: dict):
         "6) [종목 리서치 블록이 있으면] 그래프 기반 모델 상승확률·뉴스/공시 감성·웹반응 세 신호를 "
         "각각 짚고 종합해 '📊 종합 전망' 한 줄을 낸다(신호가 엇갈리면 그 점을 명시). 단정 아닌 확률로.\n\n"
         f"[현재 데이터]\n{ctx}\n\n[대화]{convo}\n사용자: {msg}\n분석봇:")
-    who_acct = who
+    who_acct = "demo" if demo else who   # 캐시 네임스페이스 분리 — 데모/실계정 답변 교차오염 방지
     # 동일 질문(+계좌+대화맥락)이면 LLM 재호출 없이 이전 답변 반환(토큰 절약). 시세변동 고려 30분.
     ckey = "chat:ans:" + hashlib.sha256(f"{who_acct}|{msg}|{convo}".encode()).hexdigest()[:32]
     if (cached := _r.get(ckey)):
@@ -1103,15 +1147,16 @@ def chat(body: dict):
     reply = None
     try:
         from bot import chateval
-        from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST, SINGLE_US, SINGLE_KR
-        from bot import names as N
         res = chateval.llm_call(prompt, max_tokens=600)   # 간결화
         reply = res.get("text")
-        sys_prompt = prompt.split("\n\n[현재 데이터]\n")[0]   # 지침부 = 시스템 프롬프트(실제 데이터 마커로 분리)
-        known = list(set(DEFAULT_WATCHLIST + KR_WATCHLIST + SINGLE_US + SINGLE_KR)
-                     | set(N.all_learned().keys()))
-        chateval.log_chat(msg, sys_prompt, ctx, reply, res.get("usage"), res.get("model"),
-                          res.get("provider"), who_acct, known)
+        if not demo:   # 데모는 chateval 로깅/콜채점 제외(실 로그 오염·브로커 price 호출 방지)
+            from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST, SINGLE_US, SINGLE_KR
+            from bot import names as N
+            sys_prompt = prompt.split("\n\n[현재 데이터]\n")[0]   # 지침부 = 시스템 프롬프트
+            known = list(set(DEFAULT_WATCHLIST + KR_WATCHLIST + SINGLE_US + SINGLE_KR)
+                         | set(N.all_learned().keys()))
+            chateval.log_chat(msg, sys_prompt, ctx, reply, res.get("usage"), res.get("model"),
+                              res.get("provider"), who_acct, known)
         if reply:
             _r.set(ckey, reply, ex=1800)            # 30분 캐시
     except Exception as e:  # noqa: BLE001

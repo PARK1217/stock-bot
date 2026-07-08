@@ -81,6 +81,18 @@ NAME2SYM: dict[str, str] = {
     "엑슨모빌": "XOM", "엑슨": "XOM", "exxon": "XOM",
     "셰브론": "CVX", "chevron": "CVX",
     "보잉": "BA", "boeing": "BA",
+    # 최근 IPO(사전 누락 잦음) — 한글명으로도 잡히게
+    "피그마": "FIG", "figma": "FIG",
+    "레딧": "RDDT", "reddit": "RDDT",
+    "코어위브": "CRWV", "coreweave": "CRWV",
+    "서클": "CRCL", "circle": "CRCL",
+    "아스테라랩스": "ALAB", "아스테라": "ALAB", "astera": "ALAB",
+    "루브릭": "RBRK", "rubrik": "RBRK",
+    "인스타카트": "CART", "instacart": "CART",
+    "클라비요": "KVYO", "klaviyo": "KVYO",
+    "서비스타이탄": "TTAN", "servicetitan": "TTAN",
+    "차임": "CHYM", "chime": "CHYM",
+    "웨이스타": "WAY", "waystar": "WAY",
 }
 
 # 한국: 회사/ETF명 → 6자리 코드 (대표 130여종). names.SEED / 스크리너 유니버스와 합쳐 확장됨.
