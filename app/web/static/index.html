@@ -512,8 +512,9 @@ async function pollQuotes(){
 // ---------- 추세 스크리너 ----------
 function heldSyms(){
   const s=new Set();
-  (ST.pos||[]).forEach(p=>s.add(p.symbol));
-  ((KIST.data&&KIST.data.positions)||[]).forEach(p=>s.add(p.symbol));
+  (ST.pos||[]).forEach(p=>s.add(p.symbol));                       // 토스
+  ((KIST.data&&KIST.data.positions)||[]).forEach(p=>s.add(p.symbol)); // 한투
+  (window.PAPERHOLD||[]).forEach(x=>s.add(x));                    // 모의투자
   return s;
 }
 function renderScreen(){renderScreenInto(window.SCN,'scn'); renderScreenInto(window.SCNKR,'scnkr');}
@@ -579,9 +580,18 @@ async function loadBT(){
 // ---------- 뉴스 ----------
 async function loadNews(){
   const scn=window.SCN||[];
-  const holds=(ST.pos||[]).slice(0,6).map(p=>p.symbol);                       // 보유
-  const movers=scn.slice().sort((a,b)=>(b.ret_1m||0)-(a.ret_1m||0)).slice(0,5).map(r=>r.symbol); // 크게 오르는
-  const syms=[...new Set([...holds,...movers])].slice(0,10);
+  // ① 투자한 종목 = 토스 + 한투 + 모의투자 전부(데모=합성, 실계정=실보유)
+  let holds=[];
+  (ST.pos||[]).forEach(p=>holds.push(p.symbol));
+  ((KIST.data&&KIST.data.positions)||[]).forEach(p=>holds.push(p.symbol));
+  let paperSyms=[];
+  try{const pp=await j('/api/paper'); paperSyms=((pp&&pp.positions)||[]).map(p=>p.symbol);}catch(e){}
+  window.PAPERHOLD=new Set(paperSyms);                 // heldSyms 보강(모의투자 보유 태그)
+  holds=[...new Set([...holds,...paperSyms])];
+  // ② 엄청 상승(급등) = 스크리너 상위 상승률
+  const movers=scn.slice().sort((a,b)=>(b.ret_1m||0)-(a.ret_1m||0)).slice(0,6).map(r=>r.symbol);
+  // (③ 자주 언급=화제 는 renderNews에서 언급건수 순으로 반영)
+  const syms=[...new Set([...holds,...movers])].slice(0,14);
   if(!syms.length)return;
   document.getElementById('news-st').textContent='로딩…';
   const d=await j('/api/news?symbols='+syms.join(','));
@@ -622,9 +632,14 @@ function renderNews(){
   const retOf={}; (window.SCN||[]).forEach(r=>retOf[r.symbol]=r.ret_1m);
   const ok=s=>{const x=(s||'').trim();return x.length>=8 && x!=='없음' && !x.includes('조회 오류')
     && !x.includes('뉴스 미적용') && !x.includes('거시주도') && !x.includes('룩스루') && !x.includes('관련기사');};  // 메타요약(이슈 아님) 제외
-  // 실제 이슈 있는 것만(요약 비거나 언급 0 제외) → 많이 언급된 순
+  // 실제 이슈 있는 것만 → 구성: ①보유(투자종목) → ②급등(1개월 +10%↑) → ③화제(언급 많은 순)
+  const isBig=n=>((retOf[n.symbol]||0)>=10);
   const items=d.filter(n=>ok(n.summary) && (n.sources||0)>0)
-               .sort((a,b)=>(b.sources||0)-(a.sources||0));
+    .sort((a,b)=>{
+      const ha=held.has(a.symbol)?1:0, hb=held.has(b.symbol)?1:0; if(ha!==hb)return hb-ha;
+      const ba=isBig(a)?1:0, bb=isBig(b)?1:0; if(ba!==bb)return bb-ba;
+      return (b.sources||0)-(a.sources||0);
+    });
   const st=document.getElementById('news-st'), box=document.getElementById('news');
   if(!items.length){box.innerHTML='<div class="empty">지금은 특별히 요약할 이슈가 없어요 👍</div>';st.textContent='이슈 없음';return;}
   st.textContent=items.length+'건';

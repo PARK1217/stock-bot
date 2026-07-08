@@ -200,15 +200,41 @@ def cmd_news_warm(session: str = "") -> None:
                    "KR-오후" if 14 <= h < 18 else "US-초반" if (h >= 22 or h < 1) else
                    "US-중반" if 1 <= h < 3 else "US-후반")
     day = now.strftime("%Y-%m-%d")
-    # 유니버스: US 실보유 + US 워치 + KR 워치
+    # 유니버스: '투자한 종목'(토스 + 한투 실계좌 ISA·연금·소수점 + 모의투자) 전부
+    #           + 워치리스트(급등·화제 후보). 모든 브로커콜은 실패해도 조용히 skip.
     us_broker = get_broker()
-    us = []
+    us_hold, kr_hold = [], []
     try:
-        us = [p.symbol for p in us_broker.get_balance().positions]
+        us_hold += [p.symbol for p in us_broker.get_balance().positions]   # 토스(미국)
     except Exception:  # noqa: BLE001
         pass
-    us = list(dict.fromkeys(us + DEFAULT_WATCHLIST))
-    universe = [(s, "US") for s in us] + [(s, "KR") for s in KR_WATCHLIST]
+    try:                                                                   # 한투 실계좌(ISA/연금=KR, 소수점=US)
+        from bot.accounts import account_registry
+        for a in account_registry():
+            try:
+                b = KISBroker(account=a.acct, paper=False)
+                bal = b.get_overseas_balance() if a.overseas else b.get_balance()
+                for p in bal.positions:
+                    (us_hold if a.market == "US" else kr_hold).append(p.symbol)
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        pass
+    try:                                                                   # 모의투자(paper)
+        pk = KISBroker(paper=True)
+        try:
+            kr_hold += [p.symbol for p in pk.get_balance().positions]
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            us_hold += [p.symbol for p in pk.get_overseas_balance().positions]
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception:  # noqa: BLE001
+        pass
+    us = list(dict.fromkeys(us_hold + DEFAULT_WATCHLIST))
+    kr = list(dict.fromkeys(kr_hold + KR_WATCHLIST))
+    universe = [(s, "US") for s in us] + [(s, "KR") for s in kr]
     try:
         kis = KISBroker(account=kr_data_account(), paper=False)   # KR 일봉 시세
     except Exception:  # noqa: BLE001
