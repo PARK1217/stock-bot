@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -978,14 +979,27 @@ def chat(body: dict):
     history = body.get("history")
     history = history[-6:] if isinstance(history, list) else []
     ctx = _chat_context(who)
-    try:                                    # 질문에 나온 종목 온디맨드 리서치 주입(보유 무관, 최대 2종)
+    try:                                    # 질문 종목 감지: 애매하면 되묻고, 특정되면 온디맨드 리서치 주입
         from bot import research
-        for t in research.resolve_query_tickers(msg)[:2]:
+        rq = research.resolve_query(msg)
+
+        def _pretty(nm):                    # 후보 이름 앞 영문 대문자화(lg화학→LG화학)
+            return re.sub(r"^[a-z]+", lambda m: m.group(0).upper(), nm or "")
+        if rq["clarify"] and not rq["confident"]:   # 임의판단 금지 → 되물음(LLM 없이 즉시)
+            parts = []
+            for grp in rq["clarify"][:2]:
+                opts = " / ".join(f"{_pretty(c['name'])}({c['symbol']})"
+                                  for c in grp["candidates"][:5])
+                parts.append(f"• '{_pretty(grp['term'])}'은(는) 여러 종목이 있어요 → {opts}")
+            ask = ("어떤 종목을 말씀하시는지 확인하고 싶어요 🙂\n" + "\n".join(parts)
+                   + "\n\n👉 정확한 종목명이나 6자리 코드로 알려주시면 바로 분석해드릴게요!")
+            return {"reply": ask, "cached": False}
+        for t in rq["confident"][:2]:       # 특정된 종목(보유 무관) 풀 리서치 주입
             blk = research.research_block(t["symbol"], t["market"])
             if blk:
                 ctx += "\n\n" + blk
     except Exception as e:  # noqa: BLE001
-        log.warning("리서치 주입 실패: %s", e)
+        log.warning("리서치 처리 실패: %s", e)
     convo = ""
     for h in history:
         if not isinstance(h, dict):
@@ -1004,7 +1018,9 @@ def chat(body: dict):
         "4) 과거와 미래를 반드시 구분: '과거에 N% 올랐다(=이미 지난 일)'와 '앞으로 모델 추정 N%/"
         "상승확률 N%(=예측)'를 헷갈리지 않게 따로 말한다.\n"
         "5) [완전 주린이용] 한 번에 핵심 2~3개만(쏟아내지 말 것). 따뜻하고 격려하는 말투로. "
-        "답변 맨 끝에 반드시 '👉 쉽게 말하면: …' 한 줄 요약을 붙인다. 한국어 불릿.\n\n"
+        "답변 맨 끝에 반드시 '👉 쉽게 말하면: …' 한 줄 요약을 붙인다. 한국어 불릿.\n"
+        "6) [종목 리서치 블록이 있으면] 그래프 기반 모델 상승확률·뉴스/공시 감성·웹반응 세 신호를 "
+        "각각 짚고 종합해 '📊 종합 전망' 한 줄을 낸다(신호가 엇갈리면 그 점을 명시). 단정 아닌 확률로.\n\n"
         f"[현재 데이터]\n{ctx}\n\n[대화]{convo}\n사용자: {msg}\n분석봇:")
     who_acct = "spouse" if body.get("who") == "spouse" else "me"
     # 동일 질문(+계좌+대화맥락)이면 LLM 재호출 없이 이전 답변 반환(토큰 절약). 시세변동 고려 30분.

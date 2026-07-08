@@ -255,6 +255,8 @@ _US_STOPLIST = {
     "Q1", "Q2", "Q3", "Q4", "H1", "H2", "FY", "YTD", "ROI", "ROA",
     # 한국 ETF 브랜드 접두어(미국 티커로 오인 방지)
     "TIGER", "KODEX", "PLUS", "ACE", "SOL", "KBSTAR", "ARIRANG", "HANARO",
+    # 한국 그룹/지주 약칭(미국 티커 오인 방지 → KR 경로로 처리)
+    "SK", "LG", "GS", "CJ", "KT", "HD", "DL", "DB",
 }
 
 # 대문자 티커 후보 정규식 (1~5글자). ASCII 글자 룩어라운드 사용 —
@@ -296,6 +298,20 @@ def _kr_index() -> dict[str, str]:
         return _KR_IDX
 
 
+def _kr_code2name() -> dict[str, str]:
+    """KR 코드→대표이름(KR_NAME2CODE 역매핑, 코드당 가장 짧은=대표 이름). 1회 캐시."""
+    global _KR_C2N
+    try:
+        return _KR_C2N  # type: ignore[name-defined]
+    except NameError:
+        m: dict[str, str] = {}
+        for nm, code in KR_NAME2CODE.items():
+            if code not in m or len(nm) < len(m[code]):
+                m[code] = nm
+        _KR_C2N = m  # noqa: F841
+        return m
+
+
 def _display_name(symbol: str, market: str) -> str:
     """심볼/코드 → 한글(가능하면) 표시 이름."""
     try:
@@ -305,11 +321,14 @@ def _display_name(symbol: str, market: str) -> str:
             return nm
     except Exception:  # noqa: BLE001
         pass
-    # US NAME2SYM 역매핑(한글 우선)
     if market == "US":
-        for k, v in NAME2SYM.items():
-            if v == symbol and not k.isascii():   # 한글 키 우선
+        for k, v in NAME2SYM.items():          # US NAME2SYM 역매핑(한글 우선)
+            if v == symbol and not k.isascii():
                 return k
+    else:
+        nm = _kr_code2name().get(symbol)        # KR 코드→이름
+        if nm:
+            return nm
     return symbol
 
 
@@ -365,6 +384,52 @@ def resolve_query_tickers(text: str) -> list[dict]:
             return found[:3]
 
     return found[:3]
+
+
+# 그룹/지주 접두어 — 단독으로 오면 여러 계열사라 임의판단 말고 되물어야 함
+_AMBIG_PREFIX = {"삼성", "현대", "lg", "엘지", "sk", "에스케이", "한화", "두산",
+                 "포스코", "롯데", "cj", "gs", "지에스", "한진", "효성", "금호",
+                 "코오롱", "신세계"}
+
+
+def _prefix_candidates(term: str, limit: int = 6) -> list[dict]:
+    """KR 인덱스에서 term 으로 시작하는 종목들 → [{symbol,name}] (코드 dedupe, 짧은이름 우선)."""
+    t = term.lower().replace(" ", "")
+    if len(t) < 2:
+        return []
+    by_code: dict[str, str] = {}
+    for name, code in _kr_index().items():
+        if name.startswith(t) and code not in by_code and not name.endswith("우"):
+            by_code[code] = _display_name(code, "KR")
+    items = sorted(by_code.items(), key=lambda kv: len(kv[1]))   # 짧은(대표) 이름 우선
+    return [{"symbol": c, "name": n} for c, n in items[:limit]]
+
+
+def resolve_query(text: str) -> dict:
+    """종목 감지 + 애매성 판정.
+    반환 {confident:[{symbol,market,name}], clarify:[{term,candidates:[{symbol,name}]}]}
+    - confident: 정확 매칭(코드/풀네임/US티커) → 바로 리서치.
+    - clarify: '삼성·현대·SK'처럼 계열사가 여럿이라 특정 안 되는 그룹 → 챗봇이 되물음(임의판단 금지)."""
+    confident = resolve_query_tickers(text)
+    compact = (text or "").lower().replace(" ", "")
+    clarify: list[dict] = []
+    drop_syms: set[str] = set()
+    for g in _AMBIG_PREFIX:
+        if g not in compact:
+            continue
+        # 더 구체적인 계열사명이 문장에 있으면(예: 'sk하이닉스') 사용자가 특정한 것 → 안 물음
+        specific = [nm for nm in _kr_index()
+                    if nm.startswith(g) and len(nm) > len(g) and nm in compact]
+        if specific:
+            drop_syms.add(_kr_index().get(g, ""))   # 그래도 붙은 지주사 단독매칭은 제거
+            continue
+        cands = _prefix_candidates(g, 6)
+        if len(cands) >= 2:
+            clarify.append({"term": g, "candidates": cands})
+            drop_syms |= {c["symbol"] for c in cands}
+    if drop_syms:
+        confident = [c for c in confident if c["symbol"] not in drop_syms]
+    return {"confident": confident, "clarify": clarify}
 
 
 # ────────────────────────────── Tavily 웹 검색 ──────────────────────────────
