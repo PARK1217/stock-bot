@@ -333,6 +333,9 @@
 
   <div class="card span2" data-tab="watch">
     <h2>🔮 예측 기록 <span class="sub" id="acc"></span></h2>
+    <div class="help-box">종목마다 <b class="k">7·14·21영업일</b> 세 기간을 동시에 예측해요. 그래서 같은 종목이 3개씩 보이고,
+      <b class="k">기간이 길수록 기대수익·상승확률·기준가</b>가 달라집니다(다른 날 만든 예측이면 기준가도 다름).
+      단기(7일)부터 빨리 검증돼요.</div>
     <div id="pred"><div class="empty">—</div></div>
   </div>
 </div>
@@ -731,15 +734,22 @@ async function loadPred(){
     `방향 ${Math.round(a.dir_acc*100)}% · 범위 ${Math.round(a.band_acc*100)}% (n=${a.evaluated})`;
   const b=document.getElementById('pred');
   const held=heldSyms();
-  const sorted=(d||[]).slice().sort((x,y)=>(held.has(y.symbol)?1:0)-(held.has(x.symbol)?1:0));  // 보유 먼저
-  b.innerHTML=sorted.length?sorted.slice(0,12).map(p=>{
+  // 보유 먼저 → 종목끼리 묶고 → 최신 예측일 → 기간(7·14·21) 순. 같은 종목 3개(기간)가 나란히 보이게.
+  const sorted=(d||[]).slice().sort((x,y)=>
+    (held.has(y.symbol)?1:0)-(held.has(x.symbol)?1:0)
+    || (x.symbol<y.symbol?-1:x.symbol>y.symbol?1:0)
+    || String(y.made_at||'').localeCompare(String(x.made_at||''))
+    || (x.horizon_days||0)-(y.horizon_days||0));
+  b.innerHTML=sorted.length?sorted.slice(0,15).map(p=>{
     const hd=held.has(p.symbol);
     const own=hd?'<span class="tag hold">보유</span>':'<span class="tag" style="opacity:.55">관심</span>';
+    const hz=`<span class="tag" style="background:#1c2740;color:#8fb6ff" title="예측 기간(영업일)">${p.horizon_days||'?'}일</span>`;
+    const day=(p.made_at||'').slice(0,10);
     return `<div class="row"${hd?'':' style="opacity:.7"'}><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nmTag(p.symbol)}
-       ${own}<span class="tag">${esc(p.status||'')}</span></div>
-       <div class="row-s num">기준 ${nf(p.base_price)} · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span>
+       ${own}${hz}<span class="tag">${esc(p.status||'')}</span></div>
+       <div class="row-s num">${day?`<span class="mut">${day} 예측</span> · `:''}기준 ${nf(p.base_price)} · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span>
          ${p.actual_return!=null?` · 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span>`:''}</div></div>
-     <div class="row-r"><div class="v num">${Math.round(p.prob_up*100)}%</div><div class="v2 mut">상승확률</div></div></div>`;}).join('')
+     <div class="row-r"><div class="v num">${Math.round(p.prob_up*100)}%</div><div class="v2 mut">상승확률(${p.horizon_days||'?'}일)</div></div></div>`;}).join('')
     :'<div class="empty">예측 기록 없음 (스케줄 가동 후 누적)</div>';
 }
 
