@@ -47,9 +47,10 @@ _DEMO_CHAT_CAP = 40   # 데모 챗봇 시간당 총 호출 상한(공용 API키 
 # 는 demo_api 합성으로 격리 — 실 보유/금액/개인 대화이력 유출 방지.
 # /api/issues(RAG 이슈 히스토리)는 실 유니버스(=실보유 포함) 종목이 통째로 노출되므로 제외 → 데모=합성.
 # /api/news는 프론트가 요청하는 심볼만 조회(데모는 합성 보유+공개 급등주만 요청)라 유출 없음 → 실제 통과.
+# /api/paper(+trades)는 사용자 요청으로 실제 모의투자(가상자본) 노출 — 실 '돈'은 아님(전략 종목은 공개됨).
 _DEMO_REAL_PASS = ("/api/screen", "/api/forecast", "/api/news",
                    "/api/predictions", "/api/accuracy", "/api/names",
-                   "/api/market-status", "/api/glossary")
+                   "/api/market-status", "/api/glossary", "/api/paper")
 
 
 def _demo_real_pass(path: str) -> bool:
