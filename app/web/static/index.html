@@ -750,8 +750,9 @@ function buildPredCtrl(){
   const c=document.getElementById('pred-ctrl'); if(!c)return;
   const hz=[['all','전체'],['7','7일'],['14','14일'],['21','21일']]
     .map(([v,t])=>`<button class="${PREDHZ===v?'on':''}" onclick="setPredHz('${v}')">${t}</button>`).join('');
-  const opts=['<option value="latest">최근 예측일</option>','<option value="all">전체 날짜</option>']
-    .concat(predDates().map(dt=>`<option value="${dt}">${dt}</option>`)).join('');
+  const dts=predDates();
+  const opts=[`<option value="latest">최근 예측일${dts[0]?' ('+dts[0]+')':''}</option>`,'<option value="all">전체 날짜</option>']
+    .concat(dts.map(dt=>`<option value="${dt}">${dt}</option>`)).join('');
   c.innerHTML=`<span class="lbl">기간</span>${hz}`
     +`<span class="lbl" style="margin-left:8px">날짜</span><select onchange="setPredDate(this.value)">${opts}</select>`;
   const sel=c.querySelector('select'); if(sel)sel.value=PREDDATE;
@@ -777,10 +778,9 @@ function renderPred(){
     const own=hd?'<span class="tag hold">보유</span>':'<span class="tag" style="opacity:.55">관심</span>';
     const hz=`<span class="tag" style="background:#1c2740;color:#8fb6ff" title="예측 기간(영업일)">${p.horizon_days||'?'}일</span>`;
     const day=(p.made_at||'').slice(0,10);
-    const showDay=(PREDDATE==='all');                 // 전체날짜일 때만 각 행에 날짜 표기
     return `<div class="row"${hd?'':' style="opacity:.7"'}><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nmTag(p.symbol)}
        ${own}${hz}<span class="tag">${esc(p.status||'')}</span></div>
-       <div class="row-s num">${showDay&&day?`<span class="mut">${day} 예측</span> · `:''}기준 ${nf(p.base_price)} · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span>
+       <div class="row-s num">${day?`<span class="mut">📅 ${day} 예측</span> · `:''}기준 ${nf(p.base_price)} · 기대 <span class="${cls(p.exp_return)}">${pct(p.exp_return)}</span>
          ${p.actual_return!=null?` · 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span>`:''}</div></div>
      <div class="row-r"><div class="v num">${Math.round(p.prob_up*100)}%</div><div class="v2 mut">상승확률(${p.horizon_days||'?'}일)</div></div></div>`;}).join('')
     :'<div class="empty">해당 조건의 예측이 없어요.</div>';
