@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     finnhub_api_key: str = ""     # 미국 종목 뉴스 (finnhub.io 무료)
     dart_api_key: str = ""        # 한국 전자공시 DART
     tiingo_api_key: str = ""      # 백테스트용 장기 US 일봉(tiingo.com 무료, 분배조정=총수익)
+    tavily_api_key: str = ""      # 챗봇 종목 리서치 웹/소셜 반응 검색(tavily.com 무료, 없으면 반응검색 생략)
+    naver_client_id: str = ""     # 네이버 검색 API(뉴스·블로그) — KR 반응 강화(developers.naver.com 무료)
+    naver_client_secret: str = ""
     news_lookback_days: int = 7
     # 감성: FinBERT(점수) + Groq(관련성·요약) 하이브리드. 없으면 키워드 폴백.
     use_finbert: bool = True              # 로컬 FinBERT 사용(키 없을 때)

@@ -978,6 +978,14 @@ def chat(body: dict):
     history = body.get("history")
     history = history[-6:] if isinstance(history, list) else []
     ctx = _chat_context(who)
+    try:                                    # 질문에 나온 종목 온디맨드 리서치 주입(보유 무관, 최대 2종)
+        from bot import research
+        for t in research.resolve_query_tickers(msg)[:2]:
+            blk = research.research_block(t["symbol"], t["market"])
+            if blk:
+                ctx += "\n\n" + blk
+    except Exception as e:  # noqa: BLE001
+        log.warning("리서치 주입 실패: %s", e)
     convo = ""
     for h in history:
         if not isinstance(h, dict):
@@ -985,8 +993,10 @@ def chat(body: dict):
         who = "사용자" if h.get("role") == "user" else "분석봇"
         convo += f"\n{who}: {str(h.get('content',''))[:500]}"
     prompt = (
-        "너는 'stock-bot'의 한국어 투자 분석 어시스턴트다. 아래 [현재 데이터]만을 근거로 "
-        "사용자의 실제 포트폴리오를 분석한다. 규칙:\n"
+        "너는 'stock-bot'의 한국어 투자 분석 어시스턴트다. 아래 [현재 데이터]를 근거로 답한다. "
+        "[현재 데이터]에는 (a) 사용자 실제 보유·계좌와, (b) 사용자가 질문한 종목의 '[종목 리서치]' "
+        "블록(추세·예측·뉴스·웹반응)이 함께 올 수 있다. [종목 리서치] 블록이 있으면 그 종목을 "
+        "보유 여부와 무관하게 추세·이슈·전망을 분석해 준다('안 갖고 있어서 모른다'고 하지 말 것). 규칙:\n"
         f"0) [주린이 모드·최우선] {BEGINNER_RULE}\n"   # 용어 풀이 정책 단일 출처(glossary)
         "1) 매수/매도 의견은 반드시 데이터 근거와 함께. 데이터에 없는 사실은 지어내지 말고 모른다고 한다.\n"
         "2) 스크리너 점수는 매수신호가 아님(신뢰도 참고). 계좌 매매제약을 꼭 반영.\n"
