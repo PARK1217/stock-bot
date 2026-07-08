@@ -239,8 +239,8 @@
     <h2>💬 분석 챗봇 <span class="mut" style="font-weight:400;font-size:11.5px">보유·스크리너·리서치 근거 · 참고용</span></h2>
     <div class="chat-bar">
       <button onclick="newChat()">＋ 새 대화</button>
-      <button onclick="toggleSearch()">🔍 검색</button>
-      <button onclick="toggleSessions()">🕘 이전 대화</button>
+      <button class="srv-only" onclick="toggleSearch()">🔍 검색</button>
+      <button class="srv-only" onclick="toggleSessions()">🕘 이전 대화</button>
       <span class="grow"></span>
       <span class="stat" id="chat-stat"></span>
     </div>
@@ -875,7 +875,7 @@ function chatRow(m){
   const cached=m.cached?' <span class="mut" style="font-size:10px">♻️ 이전답변</span>':'';
   const body=m.role==='user'?esc(m.content):mdChat(m.content);
   let extra='';
-  if(m.role!=='user'&&m.id&&m.content&&m.content!=='…분석 중'){
+  if(m.role!=='user'&&m.id&&m.content&&m.content!=='…분석 중'&&!window.__DEMO__){
     const up=m.rating===1?'on':'',down=m.rating===-1?'on':'';
     const vd=m.verdict==='맞음'?'<span class="chat-verdict ok">✅ 추이 적중</span>'
             :m.verdict==='틀림'?'<span class="chat-verdict no">❌ 빗나감</span>':'';
@@ -913,13 +913,17 @@ async function sendChat(){
     if(d.session_id){SID=d.session_id;saveSID();}
   }catch(e){CHAT[CHAT.length-1]={role:'bot',content:'오류가 발생했어요. 잠시 후 다시 시도해 주세요.'};}
   btn.disabled=false; renderChat();
+  if(window.__DEMO__)saveChatLocal();   // 데모: 서버 저장 없이 브라우저에만 보관
 }
+function saveChatLocal(){try{localStorage.setItem('sbchat_demo',JSON.stringify(CHAT.slice(-40)))}catch(e){}}
+function loadChatLocal(){try{return JSON.parse(localStorage.getItem('sbchat_demo')||'[]')}catch(e){return[]}}
 function hideChatPanels(){
   const a=document.getElementById('chat-sessions'),b=document.getElementById('chat-search');
   if(a)a.style.display='none'; if(b)b.style.display='none';
 }
 async function newChat(){
   hideChatPanels();
+  if(window.__DEMO__){CHAT=[];saveChatLocal();renderChat();document.getElementById('chat-in').focus();return;}
   try{const r=await fetch('/api/chat/new',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({who:WHO})}); const d=await r.json(); SID=d.session_id||0;}catch(e){SID=0;}
   saveSID(); CHAT=[]; renderChat();
@@ -967,6 +971,10 @@ async function doSearch(){
   }catch(e){rc.innerHTML='<div class="chat-sess"><div class="m">검색 실패</div></div>';}
 }
 async function loadCurrentChat(){   // 마지막 세션 복원(compact — 그 세션만, 끝없는 스크롤 X)
+  if(window.__DEMO__){   // 데모: 서버 미저장 → 브라우저 보관분 복원, 서버전용 버튼 숨김
+    document.querySelectorAll('.srv-only').forEach(b=>b.style.display='none');
+    CHAT=loadChatLocal(); renderChat(); return;
+  }
   if(!SID){renderChat();return;}
   try{const d=await j('/api/chat/messages?session='+SID);
     CHAT=((d&&d.messages)||[]).map(m=>({id:m.id,role:m.role,content:m.content,cached:m.cached,rating:m.rating,verdict:m.verdict}));

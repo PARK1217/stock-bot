@@ -42,6 +42,17 @@ _AUTH_TOKEN = hashlib.sha256(f"stockbot::{_PW}".encode()).hexdigest()[:40] if _P
 _DEMO_PW = settings.demo_password
 _DEMO_TOKEN = hashlib.sha256(f"stockbot::demo::{_DEMO_PW}".encode()).hexdigest()[:40] if _DEMO_PW else ""
 _DEMO_CHAT_CAP = 40   # 데모 챗봇 시간당 총 호출 상한(공용 API키 남용/할당량 소진 방지)
+# 데모에서 '실제로' 실행할 시장분석 기능(계좌·돈과 무관한 공개데이터). 이 화이트리스트만 실핸들러 통과.
+# 나머지(/api/portfolio·cash·orders·kis·assets·realized·proposals·exposure·paper·chateval·chat세션 등)
+# 는 demo_api 합성으로 격리 — 실 보유/금액/개인 대화이력 유출 방지.
+_DEMO_REAL_PASS = ("/api/screen", "/api/forecast", "/api/news", "/api/issues",
+                   "/api/predictions", "/api/accuracy", "/api/names",
+                   "/api/market-status", "/api/glossary")
+
+
+def _demo_real_pass(path: str) -> bool:
+    """데모 쿠키라도 이 경로들은 실제 기능 그대로 실행(공개 시장데이터). /api/chat은 별도 처리."""
+    return any(path == p or path.startswith(p + "/") for p in _DEMO_REAL_PASS)
 _LOGIN_HTML = """<!doctype html><html lang=ko><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>stock-bot</title>
@@ -101,13 +112,15 @@ async def _auth(request: Request, call_next):
     if hmac.compare_digest(request.cookies.get(_AUTH_COOKIE) or "", _AUTH_TOKEN):
         return await call_next(request)
     if _DEMO_TOKEN and hmac.compare_digest(request.cookies.get(_AUTH_COOKIE) or "", _DEMO_TOKEN):
-        # 데모 세션: /api는 합성데이터로 가로채(실 KIS/토스/DB 미도달), HTML·정적은 실제 그대로 서빙
+        # 데모 철학: "돈만 가짜, 제품은 진짜". 계좌·돈·개인이력 관련 /api만 합성으로 가로채고,
+        # 시장분석 기능(스크리너·뉴스·예측·정확도·용어…)과 챗봇은 실제로 실행 → 방문자가 진짜 엔진을 돌려봄.
         if path.startswith("/api/"):
-            # 챗봇만 예외 — 실 분석엔진 가동(단 합성 포트폴리오·저장/중복 제외·시간당 캡). state로 표시.
             if path == "/api/chat" and request.method == "POST":
-                request.state.demo = True
+                request.state.demo = True          # 실엔진 챗봇(합성 포트폴리오·시간당 캡·저장은 브라우저)
                 return await call_next(request)
-            from bot.demo import demo_api
+            if _demo_real_pass(path):              # 화이트리스트: 실제 기능 그대로 통과
+                return await call_next(request)
+            from bot.demo import demo_api           # 그 외(계좌/돈/chateval/chat세션) = 합성·격리
             body = None
             if request.method not in ("GET", "HEAD"):
                 try:
@@ -116,12 +129,13 @@ async def _auth(request: Request, call_next):
                     body = {}
             return JSONResponse(demo_api(request.method, path,
                                          dict(request.query_params), body) or {})
-        if path in ("/", "/rag"):        # 데모 화면: 나/남편 토글 숨김(개인기능 비노출)
+        if path in ("/", "/rag"):        # 데모 화면: 토글 숨김 + 데모 플래그 주입(프론트 브라우저저장 분기용)
             fname = "index.html" if path == "/" else "rag.html"
             try:
                 html = (_STATIC / fname).read_text(encoding="utf-8").replace(
                     "</head>",
-                    "<style>.user-tog{display:none!important}</style></head>", 1)
+                    "<style>.user-tog{display:none!important}</style>"
+                    "<script>window.__DEMO__=true;</script></head>", 1)
                 return HTMLResponse(html)
             except Exception:  # noqa: BLE001
                 pass
