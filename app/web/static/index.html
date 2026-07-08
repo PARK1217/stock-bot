@@ -580,18 +580,20 @@ async function loadBT(){
 // ---------- 뉴스 ----------
 async function loadNews(){
   const scn=window.SCN||[];
-  // ① 투자한 종목 = 토스 + 한투 + 모의투자 전부(데모=합성, 실계정=실보유)
-  let holds=[];
-  (ST.pos||[]).forEach(p=>holds.push(p.symbol));
-  ((KIST.data&&KIST.data.positions)||[]).forEach(p=>holds.push(p.symbol));
+  // ① 투자한 종목(토스+한투+모의투자) — 평가액 상위 위주로 일부만(전량이면 급등·화제가 밀려남)
+  const val={};
+  (ST.pos||[]).forEach(p=>val[p.symbol]=Math.max(val[p.symbol]||0,p.value_krw||0));
+  ((KIST.data&&KIST.data.positions)||[]).forEach(p=>val[p.symbol]=Math.max(val[p.symbol]||0,p.value_krw||0));
   let paperSyms=[];
-  try{const pp=await j('/api/paper'); paperSyms=((pp&&pp.positions)||[]).map(p=>p.symbol);}catch(e){}
+  try{const pp=await j('/api/paper'); ((pp&&pp.positions)||[]).forEach(p=>{paperSyms.push(p.symbol);val[p.symbol]=Math.max(val[p.symbol]||0,p.value_krw||0);});}catch(e){}
   window.PAPERHOLD=new Set(paperSyms);                 // heldSyms 보강(모의투자 보유 태그)
-  holds=[...new Set([...holds,...paperSyms])];
-  // ② 엄청 상승(급등) = 스크리너 상위 상승률
-  const movers=scn.slice().sort((a,b)=>(b.ret_1m||0)-(a.ret_1m||0)).slice(0,6).map(r=>r.symbol);
+  const heldAll=new Set(Object.keys(val));
+  const heldTop=Object.keys(val).sort((a,b)=>val[b]-val[a]).slice(0,7);   // 보유 상위 7
+  // ② 엄청 상승(급등) = 스크리너 상위 상승률 中 '미보유' 위주(발굴), 최대 6
+  const movers=scn.slice().sort((a,b)=>(b.ret_1m||0)-(a.ret_1m||0))
+    .map(r=>r.symbol).filter(s=>!heldAll.has(s)).slice(0,6);
   // (③ 자주 언급=화제 는 renderNews에서 언급건수 순으로 반영)
-  const syms=[...new Set([...holds,...movers])].slice(0,14);
+  const syms=[...new Set([...heldTop,...movers])].slice(0,13);
   if(!syms.length)return;
   document.getElementById('news-st').textContent='로딩…';
   const d=await j('/api/news?symbols='+syms.join(','));
