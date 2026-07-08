@@ -508,7 +508,21 @@ def _demo_api_raw(method: str, path: str, query: dict, body: dict | None) -> dic
 
     # POST /api/chat
     if path == "/api/chat":
-        return {"reply": CHAT_REPLY, "cached": False}
+        return {"reply": CHAT_REPLY, "cached": False, "session_id": 1, "message_id": 1}
+
+    # Chat 2.0(데모: 합성이라 저장 안 함 → 빈 목록/무동작으로 UI만 정상 동작)
+    if path == "/api/chat/sessions":
+        return {"sessions": [], "stats": {"up": 0, "down": 0}}
+    if path == "/api/chat/messages":
+        return {"messages": []}
+    if path == "/api/chat/new":
+        return {"session_id": 1}
+    if path == "/api/chat/search":
+        return {"results": []}
+    if path == "/api/chat/rate":
+        return {"ok": True}
+    if path == "/api/chat/summarize":
+        return {"summary": ""}
 
     # RAG 챗봇 평가/로그
     if path == "/api/chateval":

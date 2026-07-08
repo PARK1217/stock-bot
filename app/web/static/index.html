@@ -125,6 +125,26 @@
     border-radius:8px;padding:9px 12px;font-size:14px}
   .chat-input button{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:0 18px;
     font-weight:600;cursor:pointer;font-size:13.5px} .chat-input button:disabled{opacity:.5}
+  /* Chat 2.0 — 툴바·세션목록·검색·평가 */
+  .chat-bar{display:flex;gap:6px;padding:8px 14px;border-bottom:1px solid var(--line);align-items:center}
+  .chat-bar button{background:#1a1e26;border:1px solid var(--line);color:var(--mut);border-radius:7px;
+    padding:5px 10px;font-size:11.5px;cursor:pointer;font-weight:600}
+  .chat-bar button:active{transform:scale(.95)} .chat-bar .grow{flex:1}
+  .chat-bar .stat{font-size:11px;color:var(--mut);white-space:nowrap}
+  .chat-panel{border-bottom:1px solid var(--line);max-height:250px;overflow-y:auto;background:#12151b}
+  .chat-sess{padding:9px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+  .chat-sess:active{background:#1a1e26}
+  .chat-sess .t{font-size:13px;color:var(--fg);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chat-sess .m{font-size:11px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chat-search-in{display:flex;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line)}
+  .chat-search-in input{flex:1;min-width:0;background:#11141a;border:1px solid var(--line);color:var(--fg);
+    border-radius:8px;padding:8px 11px;font-size:13px}
+  .chat-search-in button{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:0 14px;font-weight:600;cursor:pointer;font-size:12.5px}
+  .chat-rate{display:flex;gap:8px;margin-top:8px;align-items:center}
+  .chat-rate button{background:none;border:1px solid var(--line);border-radius:6px;padding:2px 9px;font-size:12px;cursor:pointer;color:var(--mut)}
+  .chat-rate button.on{background:#243154;border-color:var(--accent);color:#fff}
+  .chat-verdict{font-size:10.5px;padding:1px 7px;border-radius:8px}
+  .chat-verdict.ok{background:#123a24;color:#4ade80} .chat-verdict.no{background:#3a1a1a;color:#f87171}
   .tabs{display:flex;gap:6px;padding:0 14px 10px;max-width:1180px;margin:0 auto}
   .tab{flex:1;background:var(--card);border:1px solid var(--line);color:var(--mut);
     border-radius:11px;padding:11px 8px;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:.15s}
@@ -216,7 +236,23 @@
   </div>
 
   <div class="card span2" data-tab="ai">
-    <h2>💬 분석 챗봇 <span class="mut" style="font-weight:400;font-size:11.5px">보유·스크리너 근거 · 참고용</span></h2>
+    <h2>💬 분석 챗봇 <span class="mut" style="font-weight:400;font-size:11.5px">보유·스크리너·리서치 근거 · 참고용</span></h2>
+    <div class="chat-bar">
+      <button onclick="newChat()">＋ 새 대화</button>
+      <button onclick="toggleSearch()">🔍 검색</button>
+      <button onclick="toggleSessions()">🕘 이전 대화</button>
+      <span class="grow"></span>
+      <span class="stat" id="chat-stat"></span>
+    </div>
+    <div id="chat-sessions" class="chat-panel" style="display:none"></div>
+    <div id="chat-search" class="chat-panel" style="display:none">
+      <div class="chat-search-in">
+        <input id="chat-q" placeholder="지난 대화 검색…" autocomplete="off"
+          onkeydown="if(event.key==='Enter')doSearch()">
+        <button onclick="doSearch()">검색</button>
+      </div>
+      <div id="chat-results"></div>
+    </div>
     <div id="chat-msgs" class="chat-msgs"></div>
     <div class="chat-chips" id="chat-chips"></div>
     <div class="chat-input">
@@ -823,45 +859,126 @@ function renderKis(){
 }
 
 // ---------- 부팅 ----------
-// ---------- 분석 챗봇 ----------
-let CHAT=(function(){try{return JSON.parse(localStorage.getItem('sbchat')||'[]')}catch(e){return[]}})();  // 대화 복원
-function saveChat(){try{localStorage.setItem('sbchat',JSON.stringify(CHAT.slice(-40)))}catch(e){}}
-const CHIPS=['지금 뭘 팔고 뭘 사면 좋을까?','내 포트폴리오 분석해줘','집중도·리스크 점검해줘','스크리너 상위 종목 사도 돼?'];
+// ---------- 분석 챗봇 (Chat 2.0: 세션 영속·검색·평가) ----------
+let SID=(function(){try{return +localStorage.getItem('sbchat_sid')||0}catch(e){return 0}})();
+let CHAT=[];   // 현재 세션 메시지 [{id,role,content,cached,rating,verdict}]
+function saveSID(){try{localStorage.setItem('sbchat_sid',SID||0)}catch(e){}}
+const CHIPS=['지금 뭘 팔고 뭘 사면 좋을까?','내 포트폴리오 분석해줘','집중도·리스크 점검해줘','엔비디아 지금 사도 돼?'];
 function mdChat(s){s=esc(s);
   s=s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>');
   s=s.replace(/^\s*[-*]\s+/gm,'• ').replace(/\n/g,'<br>');return s;}
 function initChips(){document.getElementById('chat-chips').innerHTML=
   CHIPS.map(c=>`<span class="chat-chip" onclick="askChip(this)">${c}</span>`).join('');}
 function askChip(el){document.getElementById('chat-in').value=el.textContent;sendChat();}
+function chatRow(m){
+  const who=m.role==='user'?'🙋 나':'🤖 분석봇';
+  const cached=m.cached?' <span class="mut" style="font-size:10px">♻️ 이전답변</span>':'';
+  const body=m.role==='user'?esc(m.content):mdChat(m.content);
+  let extra='';
+  if(m.role!=='user'&&m.id&&m.content&&m.content!=='…분석 중'){
+    const up=m.rating===1?'on':'',down=m.rating===-1?'on':'';
+    const vd=m.verdict==='맞음'?'<span class="chat-verdict ok">✅ 추이 적중</span>'
+            :m.verdict==='틀림'?'<span class="chat-verdict no">❌ 빗나감</span>':'';
+    extra=`<div class="chat-rate"><button class="${up}" onclick="rateMsg(${m.id},1)">👍</button>`
+        +`<button class="${down}" onclick="rateMsg(${m.id},-1)">👎</button>${vd}</div>`;
+  }
+  return `<div class="chat-m ${m.role==='user'?'u':'b'}"><span class="who">${who}${cached}</span>${body}${extra}</div>`;
+}
 function renderChat(){
   const b=document.getElementById('chat-msgs'); if(!b)return;
-  b.innerHTML=CHAT.length?CHAT.map(m=>
-    `<div class="chat-m ${m.role==='user'?'u':'b'}"><span class="who">${m.role==='user'?'🙋 나':'🤖 분석봇'}${m.cached?' <span class="mut" style="font-size:10px">♻️ 이전답변</span>':''}</span>${m.role==='user'?esc(m.content):mdChat(m.content)}</div>`).join('')
-    :'<div class="empty">보유·스크리너·신뢰도를 근거로 분석해드려요. 아래 예시를 눌러보세요 ↓</div>';
+  b.innerHTML=CHAT.length?CHAT.map(chatRow).join('')
+    :'<div class="empty">보유·스크리너·리서치를 근거로 분석해드려요. 아래 예시를 누르거나 ＋새 대화로 시작하세요 ↓</div>';
   b.scrollTop=b.scrollHeight;
-  saveChat();
+}
+async function rateMsg(id,val){
+  const m=CHAT.find(x=>x.id===id); if(!m)return;
+  const nv=(m.rating===val)?0:val; m.rating=nv; renderChat();
+  try{await fetch('/api/chat/rate',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message_id:id,rating:nv})});}catch(e){}
 }
 async function sendChat(){
   const inp=document.getElementById('chat-in'),btn=document.getElementById('chat-send');
   const msg=inp.value.trim(); if(!msg)return;
-  const hist=CHAT.slice();
+  hideChatPanels();
+  const hist=CHAT.filter(m=>m.content&&m.content!=='…분석 중')
+    .map(m=>({role:m.role==='user'?'user':'bot',content:m.content})).slice(-6);
   CHAT.push({role:'user',content:msg}); CHAT.push({role:'bot',content:'…분석 중'});
   inp.value=''; btn.disabled=true; renderChat();
   try{
     const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:msg,history:hist,who:WHO})});
+      body:JSON.stringify({message:msg,history:hist,who:WHO,session_id:SID||null})});
     if(r.status===401){location.reload();return;}
     const d=await r.json();
-    CHAT[CHAT.length-1]={role:'bot',content:d.reply||'(응답 없음)',cached:!!d.cached};  // 로깅·콜기록·캐시는 서버 chat()
-
+    CHAT[CHAT.length-1]={role:'bot',content:d.reply||'(응답 없음)',cached:!!d.cached,id:d.message_id,rating:0};
+    if(d.session_id){SID=d.session_id;saveSID();}
   }catch(e){CHAT[CHAT.length-1]={role:'bot',content:'오류가 발생했어요. 잠시 후 다시 시도해 주세요.'};}
   btn.disabled=false; renderChat();
+}
+function hideChatPanels(){
+  const a=document.getElementById('chat-sessions'),b=document.getElementById('chat-search');
+  if(a)a.style.display='none'; if(b)b.style.display='none';
+}
+async function newChat(){
+  hideChatPanels();
+  try{const r=await fetch('/api/chat/new',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({who:WHO})}); const d=await r.json(); SID=d.session_id||0;}catch(e){SID=0;}
+  saveSID(); CHAT=[]; renderChat();
+  document.getElementById('chat-in').focus();
+}
+async function toggleSessions(){
+  const p=document.getElementById('chat-sessions'),s=document.getElementById('chat-search');
+  if(s)s.style.display='none';
+  if(p.style.display!=='none'){p.style.display='none';return;}
+  p.style.display=''; p.innerHTML='<div class="chat-sess"><div class="m">불러오는 중…</div></div>';
+  try{const d=await j('/api/chat/sessions?who='+WHO);
+    const st=document.getElementById('chat-stat');
+    if(st&&d&&d.stats)st.textContent=(d.stats.up||d.stats.down)?('👍 '+d.stats.up+' · 👎 '+d.stats.down):'';
+    const ss=(d&&d.sessions)||[];
+    p.innerHTML=ss.length?ss.map(x=>
+      `<div class="chat-sess" onclick="openSession(${x.id})"><div class="t">${esc(x.title)}</div>`
+      +`<div class="m">${x.date} · ${x.count}개${x.summary?' · '+esc(x.summary.slice(0,40)):''}</div></div>`).join('')
+      :'<div class="chat-sess"><div class="m">저장된 지난 대화가 없어요.</div></div>';
+  }catch(e){p.innerHTML='<div class="chat-sess"><div class="m">불러오기 실패</div></div>';}
+}
+async function openSession(id){
+  hideChatPanels(); SID=id; saveSID();
+  try{const d=await j('/api/chat/messages?session='+id);
+    CHAT=((d&&d.messages)||[]).map(m=>({id:m.id,role:m.role,content:m.content,cached:m.cached,rating:m.rating,verdict:m.verdict}));
+  }catch(e){CHAT=[];}
+  renderChat();
+}
+function toggleSearch(){
+  const p=document.getElementById('chat-search'),s=document.getElementById('chat-sessions');
+  if(s)s.style.display='none';
+  p.style.display=(p.style.display==='none')?'':'none';
+  if(p.style.display!=='none'){const q=document.getElementById('chat-q');if(q)q.focus();}
+}
+async function doSearch(){
+  const q=document.getElementById('chat-q').value.trim();
+  const rc=document.getElementById('chat-results');
+  if(q.length<2){rc.innerHTML='<div class="chat-sess"><div class="m">2글자 이상 입력하세요.</div></div>';return;}
+  rc.innerHTML='<div class="chat-sess"><div class="m">검색 중…</div></div>';
+  try{const d=await j('/api/chat/search?who='+WHO+'&q='+encodeURIComponent(q));
+    const rs=(d&&d.results)||[];
+    rc.innerHTML=rs.length?rs.map(r=>
+      `<div class="chat-sess" onclick="openSession(${r.session_id})"><div class="t">${r.role==='user'?'🙋':'🤖'} ${esc(r.snippet)}</div>`
+      +`<div class="m">${esc(r.title)} · ${r.ts}</div></div>`).join('')
+      :'<div class="chat-sess"><div class="m">검색 결과가 없어요.</div></div>';
+  }catch(e){rc.innerHTML='<div class="chat-sess"><div class="m">검색 실패</div></div>';}
+}
+async function loadCurrentChat(){   // 마지막 세션 복원(compact — 그 세션만, 끝없는 스크롤 X)
+  if(!SID){renderChat();return;}
+  try{const d=await j('/api/chat/messages?session='+SID);
+    CHAT=((d&&d.messages)||[]).map(m=>({id:m.id,role:m.role,content:m.content,cached:m.cached,rating:m.rating,verdict:m.verdict}));
+  }catch(e){CHAT=[];}
+  renderChat();
 }
 let WHO='me';
 function setUser(w){
   WHO=(w==='spouse')?'spouse':'me';
   document.body.classList.toggle('spouse',WHO==='spouse');
   document.querySelectorAll('.user-btn').forEach(b=>b.classList.toggle('on',b.dataset.u===WHO));
+  SID=0; saveSID(); CHAT=[]; hideChatPanels(); renderChat();   // 세션은 사용자별 분리 → 전환시 리셋
   let t='real';try{t=localStorage.getItem('sbtab')||'real';}catch(e){}
   showTab(t); loadAll();
 }
@@ -876,7 +993,7 @@ function showTab(t){
   try{localStorage.setItem('sbtab',t);}catch(e){}
   window.scrollTo(0,0);
 }
-initChips(); renderChat();
+initChips(); loadCurrentChat();
 showTab((function(){try{return localStorage.getItem('sbtab')||'real'}catch(e){return 'real'}})());
 // ---------- 현금 / 거래내역 (실계좌) ----------
 async function loadCash(){

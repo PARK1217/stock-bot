@@ -557,12 +557,13 @@ def _trend_from_candles(candles: list[dict]) -> dict | None:
 
 
 # ────────────────────────────── 리서치 취합 ──────────────────────────────
-def research(symbol: str, market: str) -> dict:
-    """추세+예측+감성+웹반응 취합. 30분 redis 캐시. 각 파트 독립 try — never raise."""
+def research(symbol: str, market: str, light: bool = False) -> dict:
+    """추세+예측+감성+웹반응 취합. 30분 redis 캐시. 각 파트 독립 try — never raise.
+    light=True면 웹반응 검색(느린 외부호출)을 생략(포트폴리오 자동리서치 등 다건용)."""
     symbol = symbol.strip().upper()
     market = "KR" if market == "KR" else "US"
     name = _display_name(symbol, market)
-    ck = f"research:{market}:{symbol}"
+    ck = f"research:{'L' if light else 'F'}:{market}:{symbol}"
     try:
         c = _r.get(ck)
         if c:
@@ -588,10 +589,11 @@ def research(symbol: str, market: str) -> dict:
         log.warning("%s 감성 조회 실패", symbol)
 
     # 웹/소셜 반응 — Tavily(US+웹) + 네이버 뉴스·블로그(KR). 예측 blend 입력으로도 씀 → 먼저 수집
-    try:
-        result["reactions"] = _reactions(symbol, name, market)
-    except Exception:  # noqa: BLE001
-        log.warning("%s 웹반응 검색 실패", symbol)
+    if not light:
+        try:
+            result["reactions"] = _reactions(symbol, name, market)
+        except Exception:  # noqa: BLE001
+            log.warning("%s 웹반응 검색 실패", symbol)
 
     # 반응 감성(FinBERT) → 뉴스/공시 감성과 결합해 예측 신호로 blend
     reaction_score = 0.0
@@ -651,9 +653,10 @@ def _f(x, suffix="%", nd=1):
     return f"{x:+.{nd}f}{suffix}"
 
 
-def research_block(symbol: str, market: str) -> str:
-    """research()를 LLM 프롬프트용 한국어 컴팩트 블록으로 포맷. 과거 vs 미래 명확 분리."""
-    d = research(symbol, market)
+def research_block(symbol: str, market: str, light: bool = False) -> str:
+    """research()를 LLM 프롬프트용 한국어 컴팩트 블록으로 포맷. 과거 vs 미래 명확 분리.
+    light=True면 웹반응 없이 추세·예측·뉴스만(포트폴리오 자동리서치용)."""
+    d = research(symbol, market, light=light)
     name = d.get("name") or ""
     head = f"[종목 리서치: {d['symbol']}" + (f" ({name})" if name and name != d["symbol"] else "") + "]"
     lines = [head]
@@ -705,7 +708,7 @@ def research_block(symbol: str, market: str) -> str:
     else:
         lines.append("▷ 뉴스감성: 데이터 없음(뉴스 미수집/키 없음)")
 
-    # 웹 반응
+    # 웹 반응 (light 모드에선 수집 안 하므로 줄 생략)
     reactions = d.get("reactions") or []
     if reactions:
         lines.append("▷ 웹/소셜 반응(최근):")
@@ -717,7 +720,7 @@ def research_block(symbol: str, market: str) -> str:
             src = r.get("src")
             tag = f"[{src}] " if src else ""
             lines.append(f"   · {tag}{title}" + (f" — {snippet}" if snippet else ""))
-    else:
+    elif not light:
         lines.append("▷ 웹/소셜 반응: 데이터 없음(검색 키 없음/결과 없음)")
 
     return "\n".join(lines)

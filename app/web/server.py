@@ -969,16 +969,76 @@ def _chat_context(who: str = "me") -> str:
     return "\n".join(L)
 
 
+_PORT_KW = ("포트폴리오", "전체", "분산", "비중", "리밸런", "뭐 팔", "뭐팔", "뭘 팔", "뭘팔",
+            "뭐 사", "뭐사", "뭘 사", "뭘사", "점검", "분석해줘", "정리해")
+
+
+def _top_holdings(who: str = "me", n: int = 3) -> list[tuple[str, str]]:
+    """평가금액 상위 보유종목 [(symbol, market)] — 포트폴리오 자동리서치용. 토스(미국) 우선 + 한투(KR)."""
+    out: list[tuple[str, str]] = []
+    try:
+        p = portfolio("", "spouse") if who == "spouse" else portfolio("")
+        for x in sorted(p.get("positions", []), key=lambda z: -(z.get("value_krw") or 0)):
+            out.append((x["symbol"], "US"))
+    except Exception:  # noqa: BLE001
+        pass
+    if who != "spouse":
+        try:
+            k = kis_accounts()
+            for x in sorted(k.get("positions", []), key=lambda z: -(z.get("value_krw") or 0)):
+                sym = x["symbol"]
+                out.append((sym, "KR" if sym[:1].isdigit() else "US"))
+        except Exception:  # noqa: BLE001
+            pass
+    seen, res = set(), []
+    for sym, mk in out:
+        if sym in seen:
+            continue
+        seen.add(sym)
+        res.append((sym, mk))
+        if len(res) >= n:
+            break
+    return res
+
+
 @app.post("/api/chat")
 def chat(body: dict):
-    """투자 분석 챗봇 — 현재 데이터를 근거로 Groq가 답변(참고용, 결정은 사용자)."""
+    """투자 분석 챗봇 — 현재 데이터 근거로 답변(참고용). Chat 2.0: 세션 영속·중복합치기·평가."""
     msg = (body.get("message") or "").strip()
     if not msg:
         return {"reply": "질문을 입력해 주세요."}
     who = "spouse" if body.get("who") == "spouse" else "me"
+    try:
+        session_id = int(body.get("session_id")) if body.get("session_id") else None
+    except (TypeError, ValueError):
+        session_id = None
     history = body.get("history")
     history = history[-6:] if isinstance(history, list) else []
+
+    def _finish(reply, cached=False):
+        """모든 반환 경로 공통 — Postgres 세션에 턴 저장 + 메시지 id 반환(평가용)."""
+        ids = {}
+        try:
+            from bot import chatstore
+            ids = chatstore.append_turn(who, msg, reply or "", session_id=session_id, cached=cached)
+        except Exception as e:  # noqa: BLE001
+            log.warning("대화 저장 실패: %s", e)
+        return {"reply": reply or "분석에 실패했어요. 잠시 후 다시 시도해 주세요.",
+                "cached": cached, "session_id": ids.get("session_id", session_id),
+                "message_id": ids.get("bot_id")}
+
+    # 중복 질문 합치기 — 맥락 없는 단독 질문이 6h 내 동일했으면 이전 답변 재사용(durable)
+    if not history:
+        try:
+            from bot import chatstore
+            dup = chatstore.find_recent_answer(who, msg)
+            if dup:
+                return _finish(dup["answer"], cached=True)
+        except Exception:  # noqa: BLE001
+            pass
+
     ctx = _chat_context(who)
+    ticker_found = False
     try:                                    # 질문 종목 감지: 애매하면 되묻고, 특정되면 온디맨드 리서치 주입
         from bot import research
         rq = research.resolve_query(msg)
@@ -993,19 +1053,32 @@ def chat(body: dict):
                 parts.append(f"• '{_pretty(grp['term'])}'은(는) 여러 종목이 있어요 → {opts}")
             ask = ("어떤 종목을 말씀하시는지 확인하고 싶어요 🙂\n" + "\n".join(parts)
                    + "\n\n👉 정확한 종목명이나 6자리 코드로 알려주시면 바로 분석해드릴게요!")
-            return {"reply": ask, "cached": False}
+            return _finish(ask)
         for t in rq["confident"][:2]:       # 특정된 종목(보유 무관) 풀 리서치 주입
             blk = research.research_block(t["symbol"], t["market"])
             if blk:
                 ctx += "\n\n" + blk
+                ticker_found = True
     except Exception as e:  # noqa: BLE001
         log.warning("리서치 처리 실패: %s", e)
+
+    # 포트폴리오 전체 자동리서치 — 종목 안 찍은 포트폴리오류 질문이면 상위보유 3종 라이트리서치
+    if not ticker_found and any(k in msg for k in _PORT_KW):
+        try:
+            from bot import research
+            for sym, mk in _top_holdings(who, 3):
+                blk = research.research_block(sym, mk, light=True)
+                if blk:
+                    ctx += "\n\n" + blk
+        except Exception as e:  # noqa: BLE001
+            log.warning("포트폴리오 자동리서치 실패: %s", e)
+
     convo = ""
     for h in history:
         if not isinstance(h, dict):
             continue
-        who = "사용자" if h.get("role") == "user" else "분석봇"
-        convo += f"\n{who}: {str(h.get('content',''))[:500]}"
+        role_lbl = "사용자" if h.get("role") == "user" else "분석봇"
+        convo += f"\n{role_lbl}: {str(h.get('content',''))[:500]}"
     prompt = (
         "너는 'stock-bot'의 한국어 투자 분석 어시스턴트다. 아래 [현재 데이터]를 근거로 답한다. "
         "[현재 데이터]에는 (a) 사용자 실제 보유·계좌와, (b) 사용자가 질문한 종목의 '[종목 리서치]' "
@@ -1022,11 +1095,11 @@ def chat(body: dict):
         "6) [종목 리서치 블록이 있으면] 그래프 기반 모델 상승확률·뉴스/공시 감성·웹반응 세 신호를 "
         "각각 짚고 종합해 '📊 종합 전망' 한 줄을 낸다(신호가 엇갈리면 그 점을 명시). 단정 아닌 확률로.\n\n"
         f"[현재 데이터]\n{ctx}\n\n[대화]{convo}\n사용자: {msg}\n분석봇:")
-    who_acct = "spouse" if body.get("who") == "spouse" else "me"
+    who_acct = who
     # 동일 질문(+계좌+대화맥락)이면 LLM 재호출 없이 이전 답변 반환(토큰 절약). 시세변동 고려 30분.
     ckey = "chat:ans:" + hashlib.sha256(f"{who_acct}|{msg}|{convo}".encode()).hexdigest()[:32]
     if (cached := _r.get(ckey)):
-        return {"reply": cached.decode(), "cached": True}
+        return _finish(cached.decode(), cached=True)
     reply = None
     try:
         from bot import chateval
@@ -1043,7 +1116,7 @@ def chat(body: dict):
             _r.set(ckey, reply, ex=1800)            # 30분 캐시
     except Exception as e:  # noqa: BLE001
         log.warning("chat 실패: %s", e)
-    return {"reply": reply or "분석에 실패했어요. 잠시 후 다시 시도해 주세요.", "cached": False}
+    return _finish(reply)
 
 
 @app.get("/api/chateval")
@@ -1064,6 +1137,58 @@ def chateval_log(body: dict):
     who = "spouse" if body.get("who") == "spouse" else "me"
     n = chateval.log_interaction(str(body.get("q") or ""), str(body.get("a") or ""), who, known)
     return {"ok": True, "calls": n}
+
+
+# ---------------- Chat 2.0: 세션·검색·평가·요약 ----------------
+@app.get("/api/chat/sessions")
+def chat_sessions(who: str = "me"):
+    """지난 대화 세션 목록(날짜·제목·요약). 프론트 '🕘 이전 대화'."""
+    from bot import chatstore
+    return {"sessions": chatstore.list_sessions(who), "stats": chatstore.rating_stats(who)}
+
+
+@app.get("/api/chat/messages")
+def chat_messages(session: int):
+    """한 세션의 전체 메시지(평가·검증 포함)."""
+    from bot import chatstore
+    return {"messages": chatstore.get_messages(session)}
+
+
+@app.post("/api/chat/new")
+def chat_new(body: dict):
+    """새 대화 세션 생성 → session_id 반환. 프론트 '＋ 새 대화'."""
+    from bot import chatstore
+    who = "spouse" if body.get("who") == "spouse" else "me"
+    return {"session_id": chatstore.new_session(who)}
+
+
+@app.get("/api/chat/search")
+def chat_search(q: str, who: str = "me"):
+    """과거 Q&A 검색."""
+    from bot import chatstore
+    return {"results": chatstore.search(who, q)}
+
+
+@app.post("/api/chat/rate")
+def chat_rate(body: dict):
+    """답변 평가 저장(👍=1 / 👎=-1 / 취소=0)."""
+    from bot import chatstore
+    try:
+        mid = int(body.get("message_id"))
+    except (TypeError, ValueError):
+        return {"ok": False}
+    return {"ok": chatstore.rate(mid, int(body.get("rating") or 0))}
+
+
+@app.post("/api/chat/summarize")
+def chat_summarize(body: dict):
+    """세션 LLM 요약 생성·저장."""
+    from bot import chatstore
+    try:
+        sid = int(body.get("session"))
+    except (TypeError, ValueError):
+        return {"summary": ""}
+    return {"summary": chatstore.summarize(sid)}
 
 
 # ---------------- 정적 프론트(React 빌드) ----------------

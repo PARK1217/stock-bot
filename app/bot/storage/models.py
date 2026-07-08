@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import String, Float, Integer, DateTime, func
+from sqlalchemy import String, Float, Integer, DateTime, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -128,3 +128,34 @@ class Prediction(Base):
     band_hit: Mapped[bool | None] = mapped_column(nullable=True)  # P10~P90 안에 들었나
     miss_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # 빗나간 예측의 사후분석 — 기간 중 이슈/큰변동에서 추정한 이유(없으면 '이유 없음')
+
+
+class ChatSession(Base):
+    """챗봇 대화 세션 — '새 대화'마다 1개. 지난 대화 목록·요약·검색의 단위(Chat 2.0)."""
+    __tablename__ = "chat_session"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    who: Mapped[str] = mapped_column(String(8), default="me", index=True)  # me | spouse
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    title: Mapped[str] = mapped_column(String(120), default="")   # 첫 질문 요약(자동)
+    summary: Mapped[str] = mapped_column(Text, default="")        # 세션 LLM 요약(선택)
+    msg_count: Mapped[int] = mapped_column(Integer, default=0)    # 메시지 수(user+bot)
+    archived: Mapped[bool] = mapped_column(default=False)
+
+
+class ChatMessage(Base):
+    """챗봇 개별 메시지 — 세션에 종속. 평가(👍/👎)·중복해시·콜채점 연결점(Chat 2.0)."""
+    __tablename__ = "chat_message"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(Integer, index=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    who: Mapped[str] = mapped_column(String(8), default="me")     # 세션 소유자(검색 편의 중복저장)
+    role: Mapped[str] = mapped_column(String(4))                  # user | bot
+    content: Mapped[str] = mapped_column(Text, default="")
+    cached: Mapped[bool] = mapped_column(default=False)           # 이전답변 재사용 여부
+    rating: Mapped[int] = mapped_column(Integer, default=0)       # 사용자 평가 0=없음 1=👍 -1=👎
+    qhash: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)  # user행: 질문 정규화 해시(중복감지)
+    # 이 답변에서 추출된 방향성 콜의 사후 추이검증(chateval와 연결). 없으면 빈값.
+    verdict: Mapped[str | None] = mapped_column(String(16), nullable=True)  # ''|맞음|틀림|평가중
