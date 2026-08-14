@@ -202,7 +202,12 @@ def _plan_orders(kis, eff: dict[str, float]) -> tuple[list[dict], dict]:
                               "why": "비중초과 트림"})
                 budget += qty * price
         elif gap > 0:                                        # 부족 → 매수(상한·예산 캡)
-            qty = int(min(gap, MAX_BUY_KRW) // price)
+            want = min(gap, MAX_BUY_KRW)
+            qty = int(want // price)
+            # 소액계좌 정수주 보정: 목표가 1주 가격보다 작아도 60% 이상이면 1주 허용
+            # (예: 43만 계좌에서 12% 슬리브=4.9만 < 1주 4.93만 → 보정 없으면 영영 매수불가)
+            if qty == 0 and want >= price * 0.6:
+                qty = 1
             buys.append({"code": code, "side": "buy", "qty": qty, "price": price,
                          "why": "비중부족 매수", "gap": gap})
     # 매수는 예산(현금+매도대금) 안에서 gap 큰 순으로
@@ -253,6 +258,10 @@ def run_isa(dry: bool = False) -> dict:
         return result
     if not _kr_open():
         log.info("ISA: 장 마감 — 주문 보류")
+        return result
+    if _r.get(K_PENDING):                     # 중복 실행 락 — 대기 중이면 새 런 스킵(이중주문 방지)
+        log.info("ISA: 이미 실행 대기 중인 주문 있음 — 스킵")
+        result["executed"] = ["skipped: 대기주문 존재(중복방지)"]
         return result
     # 일일 주문수 가드
     dkey = K_ODAY + datetime.now().strftime("%Y%m%d")
