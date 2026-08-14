@@ -1201,6 +1201,43 @@ def chateval_log(body: dict):
     return {"ok": True, "calls": n}
 
 
+# ---------------- ISA 자동매매(실계좌) 컨트롤 ----------------
+@app.get("/api/isa/status")
+def isa_status():
+    """ISA 자동매매 상태 — 킬스위치·최근 신호/실행·대기주문(취소용)."""
+    from bot import isatrader as it
+    def _j(key):
+        v = _r.get(key)
+        try:
+            return json.loads(v) if v else None
+        except Exception:  # noqa: BLE001
+            return None
+    return {"auto": (_r.get(it.K_AUTO) or b"").decode() == "on",
+            "status": _j(it.K_STATUS), "pending": _j(it.K_PENDING)}
+
+
+@app.post("/api/isa/auto")
+def isa_auto(body: dict):
+    """킬스위치 토글. on=True→자동매매 허용(실주문!), False→중지."""
+    from bot import isatrader as it
+    on = bool(body.get("on"))
+    _r.set(it.K_AUTO, "on" if on else "off")
+    try:
+        from bot.notify import notify
+        notify(f"{'🟢 [ISA] 자동매매 켜짐 — 다음 점검부터 규칙대로 매매해요' if on else '⚪ [ISA] 자동매매 꺼짐'}")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "auto": on}
+
+
+@app.post("/api/isa/cancel")
+def isa_cancel():
+    """대기 중(10분 예고) 주문 취소."""
+    from bot import isatrader as it
+    _r.set(it.K_CANCEL, "1", ex=1200)
+    return {"ok": True}
+
+
 # ---------------- Chat 2.0: 세션·검색·평가·요약 ----------------
 @app.get("/api/chat/sessions")
 def chat_sessions(who: str = "me"):

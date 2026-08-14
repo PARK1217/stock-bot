@@ -96,6 +96,14 @@ def cmd_balance_all() -> None:
     notify(msg)
 
 
+def cmd_isa(dry: bool = False) -> None:
+    """ISA 실계좌 자동매매(B균형형 고정배분+추세방어) — 알림후자동·킬스위치는 모듈이 처리."""
+    from bot.isatrader import run_isa
+    r = run_isa(dry=dry)
+    log.info("ISA 자동매매(dry=%s): 신호 %d건, 실행 %s",
+             dry, len(r.get("orders", [])), r.get("executed") or "-")
+
+
 def cmd_paper() -> None:
     """모의계좌 자동매매(예측+스크리너 종합) — KIS 모의에 실제 주문."""
     from bot.papertrader import run_paper
@@ -689,6 +697,8 @@ _SCHEDULE = [
     ("accuracy", lambda: cmd_accuracy(), "mon-fri", [(16, 0)]),
     ("backtest", lambda: cmd_backtest(), "mon", [(8, 0)]),
     ("paper", lambda: cmd_paper(), "mon-fri", [(9, 15), (12, 30), (15, 0), (23, 35)]),
+    # ISA 실계좌(알림후자동 10분 지연 포함 → 15:20 장중 실행 가능하게 마지막 슬롯 14:40)
+    ("isa", lambda: cmd_isa(), "mon-fri", [(9, 20), (13, 0), (14, 40)]),
     # US장 중·후반(전일 ET세션의 KST 새벽연장 23:30~05:00) — 중복방지 가드로 같은종목·방향 재발주 차단
     ("paper_us", lambda: cmd_paper(), "tue-sat", [(1, 30), (4, 0)]),
 ]
@@ -773,6 +783,8 @@ COMMANDS = {
     "balance": cmd_balance,
     "balance-all": cmd_balance_all,
     "paper": cmd_paper,
+    "isa": cmd_isa,
+    "isa-dry": lambda: cmd_isa(dry=True),
     "propose": cmd_propose,
     "screen": cmd_screen,
     "news": cmd_news_warm,

@@ -558,6 +558,12 @@ def _demo_api_raw(method: str, path: str, query: dict, body: dict | None) -> dic
     if path == "/api/chat":
         return {"reply": CHAT_REPLY, "cached": False, "session_id": 1, "message_id": 1}
 
+    # ISA 자동매매(실계좌 기능 — 데모는 상태 숨김·무동작. 실주문 경로 완전 차단)
+    if path == "/api/isa/status":
+        return {"auto": False, "status": None, "pending": None}
+    if path.startswith("/api/isa/"):
+        return {"ok": False}
+
     # Chat 2.0(데모: 합성이라 저장 안 함 → 빈 목록/무동작으로 UI만 정상 동작)
     if path == "/api/chat/sessions":
         return {"sessions": [], "stats": {"up": 0, "down": 0}}

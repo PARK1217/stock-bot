@@ -238,6 +238,15 @@
   </div>
 
   <div class="card span2" data-tab="real" data-me="1">
+    <h2>🤖 ISA 자동매매 <span class="sub" id="isa-st"></span>
+      <button id="isa-tgl" class="help-btn" style="float:right" onclick="toggleIsaAuto()">…</button></h2>
+    <div class="help-box">B 균형형 5종(미국S&P·미국배당·한국·금H·단기채) 고정배분 —
+      <b class="k">밴드 ±25% 리밸런싱 · MA50 추세방어 · 낙폭 -10% 가드</b>.
+      주문은 <b class="k">10분 전 디스코드 예고 후 자동 실행</b>(여기서 취소 가능).</div>
+    <div id="isa-auto"><div class="empty">불러오는 중…</div></div>
+  </div>
+
+  <div class="card span2" data-tab="real" data-me="1">
     <h2>📋 한투 주문·거래 내역 <span class="mut" style="font-weight:400;font-size:11.5px">ISA·연금 · 최근 40일</span></h2>
     <div id="kisorders"><div class="empty">불러오는 중…</div></div>
   </div>
@@ -1193,11 +1202,54 @@ function _renderReal(elId,stId,accs,names){
         <span class="${cls(mm.total)}">${samt(mm.total)} ▾</span></div>
       <div style="display:none">${rows}</div>`;}).join('');
 }
+// ---------- ISA 자동매매 컨트롤 ----------
+const ISA_NM={"360200":"미국S&P","458730":"미국배당","310970":"한국","132030":"금(H)","157450":"단기채"};
+async function loadIsaAuto(){
+  const box=document.getElementById('isa-auto'); if(!box)return;
+  const d=await j('/api/isa/status'); if(!d){box.innerHTML='<div class="empty">상태 조회 실패</div>';return;}
+  const tgl=document.getElementById('isa-tgl'), st=document.getElementById('isa-st');
+  if(tgl){tgl.textContent=d.auto?'🟢 자동매매 ON':'⚪ 자동매매 OFF';
+    tgl.style.color=d.auto?'var(--up)':'var(--mut)';}
+  const s=d.status||{};
+  if(st)st.textContent=s.snap?`총 ${(s.snap.total||0).toLocaleString()}원 · 고점대비 ${(s.info&&s.info.dd!=null)?s.info.dd+'%':'—'}${s.info&&s.info.guard?' 🛡️가드':''}`:'';
+  let html='';
+  if(d.pending&&d.pending.orders&&d.pending.orders.length){   // 대기 주문(취소 가능)
+    html+=`<div class="help-box" style="background:#3a2c17"><b>⏳ ${d.pending.orders.length}건 실행 대기 중</b> — 곧 자동 실행돼요
+      <button class="help-btn" style="margin-left:8px" onclick="cancelIsa()">🚫 취소</button><br>`
+      +d.pending.orders.map(o=>`· ${o.side==='sell'?'매도':'매수'} ${o.name} ${o.qty}주 ≈${(o.krw||0).toLocaleString()}원`).join('<br>')+'</div>';
+  }
+  if(s.eff){                                                   // 실효 목표비중 + 추세
+    html+='<div style="padding:9px 14px;font-size:12.5px">'
+      +Object.entries(s.eff).map(([c,w])=>{
+        const tr=(s.info&&s.info.trend&&s.info.trend[c])||'';
+        const bad=tr&&tr!=='위';
+        return `<span class="tag" style="margin:2px 6px 2px 0;${bad?'color:var(--warn)':''}">${ISA_NM[c]||c} ${(w*100).toFixed(0)}%${bad?' ⚠️'+tr:''}</span>`;
+      }).join('')+'</div>';
+  }
+  if(s.orders&&s.orders.length&&!(d.pending&&d.pending.orders)){
+    html+='<div style="padding:0 14px 9px;font-size:12px" class="mut">최근 신호: '
+      +s.orders.map(o=>`${o.side==='sell'?'매도':'매수'} ${o.name} ${o.qty}주`).join(' · ')+'</div>';
+  }
+  if(s.executed&&s.executed.length){
+    html+='<div style="padding:0 14px 9px;font-size:12px">'+s.executed.map(x=>esc(x)).join('<br>')+'</div>';
+  }
+  box.innerHTML=html||'<div class="empty">신호 없음 — 밴드 안에서 안정 유지 중 👍 (다음 점검 때 자동 갱신)</div>';
+}
+async function toggleIsaAuto(){
+  const d=await j('/api/isa/status'); const to=!(d&&d.auto);
+  if(to&&!confirm('ISA 실계좌 자동매매를 켤까요?\n주문 10분 전 디스코드로 예고되며, 여기서 취소할 수 있어요.'))return;
+  await fetch('/api/isa/auto',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:to})});
+  loadIsaAuto();
+}
+async function cancelIsa(){
+  await fetch('/api/isa/cancel',{method:'POST'});
+  loadIsaAuto();
+}
 function loadAll(){
   loadNames();loadRealized();
   loadPortfolio();loadProposals();loadPred();loadScreen();loadScreenKr();loadBT();
   loadCash();loadOrders();
-  if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(0);loadExpo();}  // 남편=토스만
+  if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(0);loadExpo();loadIsaAuto();}  // 남편=토스만
   else{KIST={total:0,rate:null};updateHeader();}
 }
 loadAll(); updateSessions(); loadMkt();
@@ -1206,7 +1258,8 @@ setInterval(loadMkt,3600000);                                   // 휴장 여부
 setInterval(pollQuotes,10000);
 setInterval(refreshLive,12000);                                 // 이슈 영향·추세 현재가 실시간 갱신
 setInterval(()=>{loadPortfolio();loadCash();loadOrders();loadProposals();loadPred();
-  if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(PTR.page);}},60000);
+  if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(PTR.page);loadIsaAuto();}},60000);
+setInterval(()=>{if(WHO!=='spouse')loadIsaAuto();},15000);      // 대기주문 취소창은 15초 갱신
 </script>
 
 <!-- 주린이 '쉬운 용어' 도움말 (검증세션 추가, 기존 렌더링 무간섭) -->
