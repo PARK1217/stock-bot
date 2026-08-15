@@ -109,12 +109,15 @@ def llm_call(prompt: str, max_tokens: int = 900) -> dict:
     if settings.mistral_api_key:
         provs.append(("mistral", settings.mistral_base_url, settings.mistral_api_key, settings.mistral_model))
     for name, base, key, model in provs:
+        payload = {"model": model, "max_tokens": max_tokens, "temperature": 0,
+                   "messages": [{"role": "user", "content": prompt}]}
+        if "gpt-oss" in model:      # gpt-oss는 추론토큰이 출력을 잘라먹음 → low로 억제(검증됨)
+            payload["reasoning_effort"] = "low"
         for attempt in range(3):
             try:
                 r = httpx.post(f"{base}/chat/completions",
                                headers={"Authorization": f"Bearer {key}"},
-                               json={"model": model, "max_tokens": max_tokens, "temperature": 0,
-                                     "messages": [{"role": "user", "content": prompt}]},
+                               json=payload,
                                timeout=30)
                 if r.status_code in (429, 500, 502, 503, 504):
                     time.sleep(0.6 * (attempt + 1)); continue

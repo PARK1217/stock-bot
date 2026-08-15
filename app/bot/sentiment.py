@@ -132,13 +132,16 @@ def _openai_chat(base_url: str, key: str, model: str,
     """OpenAI 호환 chat completions(그록·미스트랄 공용). 429/5xx 백오프.
     retry_rl=False면 429(레이트리밋)는 재시도 없이 즉시 None — 폴백이 있는 1차 LLM용
     (특히 Groq 일일 토큰한도(TPD)는 수초 재시도로 안 풀려 지연만 키움)."""
+    payload = {"model": model, "max_tokens": max_tokens, "temperature": 0,
+               "messages": [{"role": "user", "content": prompt}]}
+    if "gpt-oss" in model:          # gpt-oss는 추론토큰이 출력을 잘라먹음 → low로 억제(검증됨)
+        payload["reasoning_effort"] = "low"
     for attempt in range(3):
         try:
             r = httpx.post(
                 f"{base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {key}"},
-                json={"model": model, "max_tokens": max_tokens, "temperature": 0,
-                      "messages": [{"role": "user", "content": prompt}]},
+                json=payload,
                 timeout=30)
             if r.status_code == 429 and not retry_rl:
                 return None                                # 폴백으로 바로 넘김
