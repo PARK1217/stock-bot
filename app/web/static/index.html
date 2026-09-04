@@ -241,7 +241,8 @@
     <h2>🤖 ISA 자동매매 <span class="sub" id="isa-st"></span>
       <button id="isa-tgl" class="help-btn" style="float:right" onclick="toggleIsaAuto()">…</button></h2>
     <div class="help-box">B 균형형 5종(미국S&P·미국배당·한국·금H·단기채) 고정배분 —
-      <b class="k">밴드 ±25% 리밸런싱 · MA50 추세방어 · 낙폭 -10% 가드</b>.
+      <b class="k">밴드 ±25% 리밸런싱 · MA50 추세방어 · 낙폭 -10% 가드 · 💰배당가드</b>
+      (배당락 임박 D-3이면 트림 매도를 보류해 분배금 수령 — 방어 매도는 배당보다 우선).
       주문은 <b class="k">10분 전 디스코드 예고 후 자동 실행</b>(여기서 취소 가능).</div>
     <div id="isa-auto"><div class="empty">불러오는 중…</div></div>
   </div>
@@ -1225,6 +1226,10 @@ async function loadIsaAuto(){
         const bad=tr&&tr!=='위';
         return `<span class="tag" style="margin:2px 6px 2px 0;${bad?'color:var(--warn)':''}">${ISA_NM[c]||c} ${(w*100).toFixed(0)}%${bad?' ⚠️'+tr:''}</span>`;
       }).join('')+'</div>';
+  }
+  if(s.div_hold&&s.div_hold.length){                          // 배당가드: 분배금 수령 위해 매도 보류중
+    html+='<div style="padding:0 14px 6px;font-size:12px;color:var(--warn)">💰 '
+      +s.div_hold.map(x=>esc(x)).join(' · ')+'</div>';
   }
   if(s.orders&&s.orders.length&&!(d.pending&&d.pending.orders)){
     html+='<div style="padding:0 14px 9px;font-size:12px" class="mut">최근 신호: '

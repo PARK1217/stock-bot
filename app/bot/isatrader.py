@@ -51,6 +51,11 @@ DELAY_MIN = 10           # 알림 후 자동 실행까지 대기(분)
 MAX_BUY_KRW = 150_000    # 매수 1회 상한(매도=방어라 무제한)
 MAX_ORDERS_DAY = 10      # 일일 주문수 상한
 NEWS_ACCEL = -0.25       # 이슈 틸트 이 값 미만 = 강한 악재 → 추세방어 가속
+EXDIV_HOLD_DAYS = 3      # 배당락 D-N 이내면 트림성 매도 보류(분배금 수령 후 실행)
+
+# 분배금 주는 ETF만(310970은 TR=분배 재투자, 금·단기채는 분배 없음 → 배당가드 불필요)
+DIV_PAYERS = {"458730": "monthly",    # TIGER 미국배당다우존스 — 월배당
+              "360200": "quarterly"}  # ACE 미국S&P500 — 분기(1·4·7·10월) 소액
 
 # 이슈 틸트용 룩스루 프록시(대표 구성종목 — 정밀 지수구성 아님, 감성 근사용)
 PROXY_HOLDINGS = {
@@ -109,6 +114,66 @@ def _issue_tilt(code: str) -> float:
     tilt = sum(vals) / len(vals) if vals else 0.0
     _r.set(ck, tilt, ex=14400)
     return tilt
+
+
+def _lookup_exdiv(code: str) -> str:
+    """다음 분배락(기준일)을 웹검색+LLM으로 조회 → 'YYYY-MM-DD' 또는 ''.
+    LLM 단독은 날짜 환각 위험 → 검색 스니펫을 근거로 주고 형식·범위(45일 내) 엄격 검증."""
+    try:
+        from bot.research import tavily_search
+        from bot import chateval
+        name = TARGETS[code]["name"]
+        now = datetime.now()
+        hits = tavily_search(f"{name} ETF 분배금 지급 기준일 배당락 {now.year}년 {now.month}월", 4)
+        if not hits:
+            return ""
+        ctx = "\n".join(f"- {h.get('title', '')}: {(h.get('content') or '')[:200]}" for h in hits)
+        res = chateval.llm_call(
+            f"오늘은 {now.date()}다. 아래 검색결과에서 한국 상장 ETF '{name}'의 '다음' 분배금 "
+            f"기준일(배당락 관련일)을 찾아라.\n{ctx}\n\n"
+            "확실하면 날짜만 YYYY-MM-DD 형식으로, 불확실하면 NONE 이라고만 답하라.", max_tokens=30)
+        import re as _re
+        m = _re.search(r"\d{4}-\d{2}-\d{2}", (res.get("text") or ""))
+        if not m:
+            return ""
+        d = datetime.strptime(m.group(0), "%Y-%m-%d").date()
+        delta = (d - now.date()).days
+        return m.group(0) if 0 <= delta <= 45 else ""    # 과거·45일 밖 = 신뢰 불가 → 폴백
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _exdiv_imminent(code: str) -> tuple[bool, str]:
+    """배당락 임박 여부(D-{EXDIV_HOLD_DAYS} 이내). ①검색+LLM(3일 캐시) ②실패 시 월말 휴리스틱.
+    반환 (임박여부, 근거문자열)."""
+    kind = DIV_PAYERS.get(code)
+    if not kind:
+        return False, ""
+    ck = f"isa:exdiv:{code}"
+    cached = _r.get(ck)
+    if cached is None:
+        found = _lookup_exdiv(code)
+        _r.set(ck, found, ex=3 * 86400)
+    else:
+        found = cached.decode()
+    today = datetime.now().date()
+    if found:
+        try:
+            delta = (datetime.strptime(found, "%Y-%m-%d").date() - today).days
+            if 0 <= delta <= EXDIV_HOLD_DAYS:
+                return True, f"{found}(D-{delta})"
+            if delta > EXDIV_HOLD_DAYS:
+                return False, ""
+        except ValueError:
+            pass
+    # 휴리스틱 폴백: 월배당=매월 말, 분기=1·4·7·10월 말 → 말일 4일 이내면 임박 취급
+    if kind == "quarterly" and today.month not in (1, 4, 7, 10):
+        return False, ""
+    import calendar
+    last = calendar.monthrange(today.year, today.month)[1]
+    if last - today.day <= 4:
+        return True, f"월말분배 추정(말일 D-{last - today.day})"
+    return False, ""
 
 
 def _effective_targets(kis) -> tuple[dict[str, float], dict]:
@@ -237,11 +302,25 @@ def run_isa(dry: bool = False) -> dict:
     kis = KISBroker(account=(settings.kis_main_cano, "01"), paper=False)   # ISA 전용
     eff, info = _effective_targets(kis)
     orders, snap = _plan_orders(kis, eff)
+    # 배당가드 — 분배금 ETF의 '트림성' 매도는 배당락 임박(D-3)이면 보류(분배금 받고 다음 점검 때 실행).
+    # 추세이탈 피난·낙폭 방어 매도는 배당보다 우선(0.n% 분배금보다 낙폭 방어가 큼) → 즉시.
+    div_hold = []
+    kept = []
+    for o in orders:
+        if o["side"] == "sell" and o["why"] == "비중초과 트림":
+            imm, when = _exdiv_imminent(o["code"])
+            if imm:
+                div_hold.append(f"{o['name']} — 배당락 {when} 보유 유지")
+                continue
+        kept.append(o)
+    orders = kept
     auto_on = (_r.get(K_AUTO) or b"").decode() == "on"
     result = {"dry": dry, "auto": auto_on, "eff": {k: round(v, 3) for k, v in eff.items()},
-              "info": info, "snap": snap,
+              "info": info, "snap": snap, "div_hold": div_hold,
               "orders": [{k: o[k] for k in ("code", "name", "side", "qty", "krw", "why")} for o in orders],
               "executed": []}
+    if div_hold:
+        log.info("ISA 배당가드: %s", "; ".join(div_hold))
 
     # 상태 캐시(대시보드)
     _r.set(K_STATUS, json.dumps({**result, "ts": str(datetime.now())[:16]},
@@ -277,6 +356,7 @@ def run_isa(dry: bool = False) -> dict:
            ex=DELAY_MIN * 60 + 120)
     notify(f"⏳ [ISA 자동매매] {DELAY_MIN}분 후 아래 주문을 실행해요 — 대시보드에서 취소 가능\n"
            + _fmt_orders(orders)
+           + (("\n💰 " + " / ".join(div_hold)) if div_hold else "")
            + f"\n   (계좌 {snap['total']:,}원 · 고점대비 {info['dd']}%"
            + (" · 🛡️낙폭가드 발동중" if info["guard"] else "") + ")")
     waited = 0
