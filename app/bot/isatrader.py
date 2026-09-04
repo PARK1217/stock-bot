@@ -304,7 +304,7 @@ def _plan_orders(kis, eff: dict[str, float]) -> tuple[list[dict], dict]:
 def _buy_options(buys: list[dict], kis) -> tuple[list[dict], dict, str]:
     """계획된 매수를 A(규칙대로)/B(보수적)/C(보류) 옵션으로 + 종목별 '예측+그래프 위치' 주석
     + 봇 추천안(예측 종합). B = 안전자산(단기채)만, 전부 안전자산이면 절반 수량."""
-    notes, probs = {}, []
+    notes, probs, fcmap = {}, [], {}
     for o in buys:
         parts = []
         try:
@@ -314,6 +314,7 @@ def _buy_options(buys: list[dict], kis) -> tuple[list[dict], dict, str]:
             if fc:
                 parts.append(f"21일 상승확률 {fc.prob_up*100:.0f}%·기대 {fc.exp_return:+.1f}%")
                 probs.append(fc.prob_up)
+                fcmap[o["code"]] = (fc.prob_up, fc.exp_return)
             if len(closes) >= 60:              # 그래프 위치(저점 정도) — 사용자 원칙 1
                 ma50 = sum(closes[-50:]) / 50
                 hi60 = max(closes[-60:])
@@ -339,9 +340,31 @@ def _buy_options(buys: list[dict], kis) -> tuple[list[dict], dict, str]:
     # 봇 추천(안정형 기준): 예측 평균 상승확률 55%↑=A, 45~55%=B(보수), 그 외=C(보류)
     avg = sum(probs) / len(probs) if probs else 0.5
     reco = "A" if avg >= 0.55 else ("B" if avg >= 0.45 else "C")
-    return ([{"opt": "A", "label": "규칙대로 전부 매수", "orders": buys},
-             {"opt": "B", "label": lab_b, "orders": opt_b},
-             {"opt": "C", "label": "이번엔 보류(현금 유지)", "orders": []}], notes, reco)
+    reco_reason = (f"예측 평균 상승확률 {avg*100:.0f}% → "
+                   + {"A": "긍정적(55%↑)이라 규칙대로 복원",
+                      "B": "애매(45~55%)해서 보수적으로",
+                      "C": "부정적(45%↓)이라 현금 대기"}[reco])
+
+    def _outlook(orders_):
+        """옵션별 전망 — 편입 종목 예측을 금액가중 평균(21일 기준)."""
+        tot = sum(o["krw"] for o in orders_ if o["code"] in fcmap)
+        if not tot:
+            return "변동 없음 · 기대 0% (현금 그대로)"
+        p = sum(fcmap[o["code"]][0] * o["krw"] for o in orders_ if o["code"] in fcmap) / tot
+        e = sum(fcmap[o["code"]][1] * o["krw"] for o in orders_ if o["code"] in fcmap) / tot
+        return f"21일 예상: 상승확률 {p*100:.0f}% · 기대수익 {e:+.1f}% (매수분 기준)"
+
+    why_b = ("확신 낮을 때 변동 큰 자산은 미루고 안전자산만" if lab_b.startswith("안전")
+             else "확신 낮을 때 절반만 들어가 분할매수(평균단가)")
+    options = [
+        {"opt": "A", "label": "규칙대로 전부 매수", "orders": buys,
+         "why": "목표비중을 한 번에 복원해 분산 완성(규칙 원안)", "outlook": _outlook(buys)},
+        {"opt": "B", "label": lab_b, "orders": opt_b,
+         "why": why_b, "outlook": _outlook(opt_b)},
+        {"opt": "C", "label": "이번엔 보류(현금 유지)", "orders": [],
+         "why": "예측이 나쁠 때 현금으로 기다림(기회비용 감수)", "outlook": _outlook([])},
+    ]
+    return options, notes, reco, reco_reason
 
 
 def _fmt_orders(orders) -> str:
@@ -448,18 +471,21 @@ def run_isa(dry: bool = False) -> dict:
     # 매수 제안 생성(주문 실행과 독립) — 이미 제안 중이거나 오늘 '보류' 선택했으면 재제안 안 함
     if (plan_buys and not chosen_opt and not _r.get(K_BUYPROP)
             and not _r.get(K_BUYNO + datetime.now().strftime("%Y%m%d"))):
-        options, bnotes, reco = _buy_options(plan_buys, kis)
-        prop = {"ts": str(datetime.now())[:16], "notes": bnotes, "reco": reco, "options": [
+        options, bnotes, reco, reco_reason = _buy_options(plan_buys, kis)
+        prop = {"ts": str(datetime.now())[:16], "notes": bnotes, "reco": reco,
+                "reco_reason": reco_reason, "options": [
             {"opt": op["opt"], "label": op["label"], "orders": op["orders"],
+             "why": op["why"], "outlook": op["outlook"],
              "desc": " + ".join(f"{o['name']} {o['qty']}주" for o in op["orders"]) or "매수 없음"}
             for op in options]}
         _r.set(K_BUYPROP, json.dumps(prop, ensure_ascii=False), ex=6 * 3600)
-        txt = "\n".join(f"   {op['opt']}) {'⭐' if op['opt'] == reco else ''}{op['label']} — {op['desc']}"
+        txt = "\n".join(f"   {op['opt']}) {'⭐' if op['opt'] == reco else ''}{op['label']} — {op['desc']}\n"
+                        f"      · 왜: {op['why']}\n      · 전망: {op['outlook']}"
                         for op in prop["options"])
         nts = "\n".join(f"   🔮 {TARGETS[c]['name']}: {n}" for c, n in bnotes.items())
         notify("🛒 [ISA] 매수 제안 — 대시보드 🔔에서 골라주세요 (무응답 = 보류, 임의 매수 안 해요)\n"
                + txt + (("\n" + nts) if nts else "")
-               + f"\n   🤖 봇 추천: {reco}안 (예측 종합, 안정형 기준)")
+               + f"\n   🤖 봇 추천: {reco}안 — {reco_reason}")
     if not orders:
         log.info("ISA: 자동실행 주문 없음 (총 %s원, dd %s%%, 매수제안 %d건)",
                  snap["total"], info["dd"], len(plan_buys))

@@ -1254,7 +1254,9 @@ async function loadIsaAuto(){
   if(d.buyprop&&d.buyprop.options){                           // 🛒 매수 선택제: 골라야 매수 실행
     const ns=(d.buyprop.notes)||{};
     html+='<div class="help-box" style="background:#16261d"><b>🛒 매수 제안 — 골라주세요</b> (무응답=보류, 임의 매수 없음)<br>'
-      +d.buyprop.options.map(o=>`<button class="help-btn" style="margin:3px 6px 0 0" onclick="pickBuy('${o.opt}')">${o.opt}안 선택</button>${d.buyprop.reco===o.opt?'⭐':''}${esc(o.label)} — <span class="mut">${esc(o.desc)}</span>`).join('<br>')
+      +d.buyprop.options.map(o=>`<div style="margin-top:5px"><button class="help-btn" style="margin-right:6px" onclick="pickBuy('${o.opt}')">${o.opt}안 선택</button>${d.buyprop.reco===o.opt?'⭐':''}${esc(o.label)} — <span class="mut">${esc(o.desc)}</span>
+        <div class="mut" style="font-size:11px;margin:2px 0 0 4px">왜: ${esc(o.why||'')}<br>전망: ${esc(o.outlook||'')}</div></div>`).join('')
+      +(d.buyprop.reco_reason?`<div style="margin-top:6px;font-size:11.5px">🤖 추천 근거: ${esc(d.buyprop.reco_reason)}</div>`:'')
       +(Object.keys(ns).length?'<div style="margin-top:5px" class="mut">'+Object.entries(ns).map(([c,n])=>`🔮 ${esc(ISA_NM[c]||c)}: ${esc(n)}`).join('<br>')+'</div>':'')
       +'</div>';
   }
@@ -1326,7 +1328,9 @@ async function renderNotifs(){
     if(s&&s.buyprop&&s.buyprop.options){
       const ns=s.buyprop.notes||{};
       html+='<div class="notif-i" style="background:#16261d"><b>🛒 매수 제안 — 골라주세요</b> (무응답=보류)<br>'
-        +s.buyprop.options.map(o=>`<button class="help-btn" style="margin:3px 6px 0 0" onclick="pickBuy('${o.opt}')">${o.opt}안</button>${s.buyprop.reco===o.opt?'⭐':''}${esc(o.label)} — <span class="mut">${esc(o.desc)}</span>`).join('<br>')
+        +s.buyprop.options.map(o=>`<div style="margin-top:5px"><button class="help-btn" style="margin-right:6px" onclick="pickBuy('${o.opt}')">${o.opt}안</button>${s.buyprop.reco===o.opt?'⭐':''}${esc(o.label)} — <span class="mut">${esc(o.desc)}</span>
+          <div class="mut" style="font-size:11px;margin:2px 0 0 4px">왜: ${esc(o.why||'')}<br>전망: ${esc(o.outlook||'')}</div></div>`).join('')
+        +(s.buyprop.reco_reason?`<div style="margin-top:6px;font-size:11.5px">🤖 추천 근거: ${esc(s.buyprop.reco_reason)}</div>`:'')
         +(Object.keys(ns).length?'<div style="margin-top:5px" class="mut">'+Object.entries(ns).map(([c,n])=>`🔮 ${esc(ISA_NM[c]||c)}: ${esc(n)}`).join('<br>')+'</div>':'')
         +'</div>';
     }}catch(e){}
