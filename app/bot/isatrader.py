@@ -53,6 +53,8 @@ MAX_BUY_KRW = 150_000    # 매수 1회 상한(매도=방어라 무제한)
 MAX_ORDERS_DAY = 10      # 일일 주문수 상한
 NEWS_ACCEL = -0.25       # 이슈 틸트 이 값 미만 = 강한 악재 → 추세방어 가속
 EXDIV_HOLD_DAYS = 3      # 배당락 D-N 이내면 트림성 매도 보류(분배금 수령 후 실행)
+STOP_LOSS_PCT = -10.0    # 개별 종목 손절선(안정형·사용자 원칙: -10% 넘게 물리면 매도 신호.
+                         # 장기보유(lt)는 승인 요청으로 가서 '회복 대기 vs 손절'을 사용자가 결정)
 
 # 분배금 주는 ETF만(310970은 TR=분배 재투자, 금·단기채는 분배 없음 → 배당가드 불필요)
 DIV_PAYERS = {"458730": "monthly",    # TIGER 미국배당다우존스 — 월배당
@@ -294,23 +296,39 @@ def _plan_orders(kis, eff: dict[str, float]) -> tuple[list[dict], dict]:
         o["name"] = TARGETS[o["code"]]["name"]
         o["krw"] = round(o["qty"] * o["price"])
     snap = {"total": round(total), "cash": round(bal.cash),
-            "held": {c: {"qty": p.qty, "pnl": round(p.pnl_pct, 1)} for c, p in held.items()}}
+            "held": {c: {"qty": p.qty, "pnl": round(p.pnl_pct, 1),
+                         "price": p.current_price} for c, p in held.items()}}
     return orders, snap
 
 
-def _buy_options(buys: list[dict], kis) -> tuple[list[dict], dict]:
-    """계획된 매수를 A(규칙대로)/B(보수적)/C(보류) 옵션으로 + 종목별 예측 주석.
-    B = 안전자산(단기채)만, 전부 안전자산이면 절반 수량."""
-    notes = {}
+def _buy_options(buys: list[dict], kis) -> tuple[list[dict], dict, str]:
+    """계획된 매수를 A(규칙대로)/B(보수적)/C(보류) 옵션으로 + 종목별 '예측+그래프 위치' 주석
+    + 봇 추천안(예측 종합). B = 안전자산(단기채)만, 전부 안전자산이면 절반 수량."""
+    notes, probs = {}, []
     for o in buys:
+        parts = []
         try:
             closes = [c["close"] for c in kis.get_candles(o["code"], "1d", 200) if c["close"] > 0]
             from bot.forecast import forecast_symbol
             fc = forecast_symbol(o["code"], closes, 21)
             if fc:
-                notes[o["code"]] = f"21일 상승확률 {fc.prob_up*100:.0f}% · 기대 {fc.exp_return:+.1f}%"
+                parts.append(f"21일 상승확률 {fc.prob_up*100:.0f}%·기대 {fc.exp_return:+.1f}%")
+                probs.append(fc.prob_up)
+            if len(closes) >= 60:              # 그래프 위치(저점 정도) — 사용자 원칙 1
+                ma50 = sum(closes[-50:]) / 50
+                hi60 = max(closes[-60:])
+                parts.append(f"MA50대비 {closes[-1]/ma50*100-100:+.1f}%"
+                             f"·60일고점대비 {closes[-1]/hi60*100-100:+.1f}%")
+                gains = [max(0.0, closes[i] - closes[i - 1]) for i in range(-14, 0)]
+                losses = [max(0.0, closes[i - 1] - closes[i]) for i in range(-14, 0)]
+                al = sum(losses) / 14
+                rsi = 100.0 if al == 0 else 100 - 100 / (1 + (sum(gains) / 14) / al)
+                tag = " 과매도(저점권)" if rsi <= 35 else (" 과열" if rsi >= 70 else "")
+                parts.append(f"RSI {rsi:.0f}{tag}")
         except Exception:  # noqa: BLE001
             pass
+        if parts:
+            notes[o["code"]] = " | ".join(parts)
     haven = [o for o in buys if TARGETS.get(o["code"], {}).get("sleeve") == "haven"]
     if haven and len(haven) < len(buys):
         opt_b, lab_b = haven, "안전자산(단기채)만 매수"
@@ -318,9 +336,12 @@ def _buy_options(buys: list[dict], kis) -> tuple[list[dict], dict]:
         opt_b = [{**o, "qty": max(1, o["qty"] // 2),
                   "krw": round(max(1, o["qty"] // 2) * o["price"])} for o in buys]
         lab_b = "절반 수량만 매수"
+    # 봇 추천(안정형 기준): 예측 평균 상승확률 55%↑=A, 45~55%=B(보수), 그 외=C(보류)
+    avg = sum(probs) / len(probs) if probs else 0.5
+    reco = "A" if avg >= 0.55 else ("B" if avg >= 0.45 else "C")
     return ([{"opt": "A", "label": "규칙대로 전부 매수", "orders": buys},
              {"opt": "B", "label": lab_b, "orders": opt_b},
-             {"opt": "C", "label": "이번엔 보류(현금 유지)", "orders": []}], notes)
+             {"opt": "C", "label": "이번엔 보류(현금 유지)", "orders": []}], notes, reco)
 
 
 def _fmt_orders(orders) -> str:
@@ -333,6 +354,16 @@ def run_isa(dry: bool = False) -> dict:
     kis = KISBroker(account=(settings.kis_main_cano, "01"), paper=False)   # ISA 전용
     eff, info = _effective_targets(kis)
     orders, snap = _plan_orders(kis, eff)
+    # 손절 규칙(-10%, 사용자 원칙 2) — 개별 종목이 STOP_LOSS_PCT 넘게 물리면 전량매도 신호.
+    # 장기보유(lt)는 아래 승인가드로 흘러가 '회복 대기 vs 손절'을 사용자가 결정. 배당가드로 안 미뤄짐.
+    selling = {o["code"] for o in orders if o["side"] == "sell"}
+    for code, h in snap["held"].items():
+        if (code in TARGETS and code not in selling and h["qty"] > 0
+                and h["pnl"] <= STOP_LOSS_PCT and h.get("price", 0) > 0):
+            orders.insert(0, {"code": code, "name": TARGETS[code]["name"], "side": "sell",
+                              "qty": int(h["qty"]), "price": h["price"],
+                              "krw": round(h["qty"] * h["price"]),
+                              "why": f"손절 {h['pnl']:+.1f}%(기준 {STOP_LOSS_PCT:.0f}%)"})
     # 배당가드 — 분배금 ETF의 '트림성' 매도는 배당락 임박(D-3)이면 보류(분배금 받고 다음 점검 때 실행).
     # 추세이탈 피난·낙폭 방어 매도는 배당보다 우선(0.n% 분배금보다 낙폭 방어가 큼) → 즉시.
     div_hold = []
@@ -417,16 +448,18 @@ def run_isa(dry: bool = False) -> dict:
     # 매수 제안 생성(주문 실행과 독립) — 이미 제안 중이거나 오늘 '보류' 선택했으면 재제안 안 함
     if (plan_buys and not chosen_opt and not _r.get(K_BUYPROP)
             and not _r.get(K_BUYNO + datetime.now().strftime("%Y%m%d"))):
-        options, bnotes = _buy_options(plan_buys, kis)
-        prop = {"ts": str(datetime.now())[:16], "notes": bnotes, "options": [
+        options, bnotes, reco = _buy_options(plan_buys, kis)
+        prop = {"ts": str(datetime.now())[:16], "notes": bnotes, "reco": reco, "options": [
             {"opt": op["opt"], "label": op["label"], "orders": op["orders"],
              "desc": " + ".join(f"{o['name']} {o['qty']}주" for o in op["orders"]) or "매수 없음"}
             for op in options]}
         _r.set(K_BUYPROP, json.dumps(prop, ensure_ascii=False), ex=6 * 3600)
-        txt = "\n".join(f"   {op['opt']}) {op['label']} — {op['desc']}" for op in prop["options"])
+        txt = "\n".join(f"   {op['opt']}) {'⭐' if op['opt'] == reco else ''}{op['label']} — {op['desc']}"
+                        for op in prop["options"])
         nts = "\n".join(f"   🔮 {TARGETS[c]['name']}: {n}" for c, n in bnotes.items())
         notify("🛒 [ISA] 매수 제안 — 대시보드 🔔에서 골라주세요 (무응답 = 보류, 임의 매수 안 해요)\n"
-               + txt + (("\n" + nts) if nts else ""))
+               + txt + (("\n" + nts) if nts else "")
+               + f"\n   🤖 봇 추천: {reco}안 (예측 종합, 안정형 기준)")
     if not orders:
         log.info("ISA: 자동실행 주문 없음 (총 %s원, dd %s%%, 매수제안 %d건)",
                  snap["total"], info["dd"], len(plan_buys))
