@@ -77,6 +77,9 @@ K_STATUS = "isa:status"      # 대시보드 상태 캐시
 K_ODAY = "isa:ocount:"       # +YYYYMMDD 일일 주문 카운터
 K_APPROVE = "isa:approve"    # 승인 대기 매도 목록(json) — 장기보유(lt) 종목 매도는 동의 필요
 # isa:ok:{code}(24h)=매도 승인됨 / isa:no:{code}(3일)=거절(재요청 억제) / isa:asked:{code}(1일)=알림 중복방지
+K_BUYPROP = "isa:buyprop"    # 매수 제안(A/B/C 옵션+예측, json, 6h) — 매수는 사용자가 골라야 실행
+K_BUYOK = "isa:buyok"        # 사용자가 고른 매수안(json, 24h·실행 후 소모)
+K_BUYNO = "isa:buyno:"       # +YYYYMMDD — '보류' 선택 시 당일 재제안 억제
 
 
 def _kr_open() -> bool:
@@ -295,6 +298,31 @@ def _plan_orders(kis, eff: dict[str, float]) -> tuple[list[dict], dict]:
     return orders, snap
 
 
+def _buy_options(buys: list[dict], kis) -> tuple[list[dict], dict]:
+    """계획된 매수를 A(규칙대로)/B(보수적)/C(보류) 옵션으로 + 종목별 예측 주석.
+    B = 안전자산(단기채)만, 전부 안전자산이면 절반 수량."""
+    notes = {}
+    for o in buys:
+        try:
+            closes = [c["close"] for c in kis.get_candles(o["code"], "1d", 200) if c["close"] > 0]
+            from bot.forecast import forecast_symbol
+            fc = forecast_symbol(o["code"], closes, 21)
+            if fc:
+                notes[o["code"]] = f"21일 상승확률 {fc.prob_up*100:.0f}% · 기대 {fc.exp_return:+.1f}%"
+        except Exception:  # noqa: BLE001
+            pass
+    haven = [o for o in buys if TARGETS.get(o["code"], {}).get("sleeve") == "haven"]
+    if haven and len(haven) < len(buys):
+        opt_b, lab_b = haven, "안전자산(단기채)만 매수"
+    else:
+        opt_b = [{**o, "qty": max(1, o["qty"] // 2),
+                  "krw": round(max(1, o["qty"] // 2) * o["price"])} for o in buys]
+        lab_b = "절반 수량만 매수"
+    return ([{"opt": "A", "label": "규칙대로 전부 매수", "orders": buys},
+             {"opt": "B", "label": lab_b, "orders": opt_b},
+             {"opt": "C", "label": "이번엔 보류(현금 유지)", "orders": []}], notes)
+
+
 def _fmt_orders(orders) -> str:
     return "\n".join(f"   · {o['side'].upper()} {o['name']}({o['code']}) {o['qty']}주 ≈{o['krw']:,}원 — {o['why']}"
                      for o in orders)
@@ -345,9 +373,31 @@ def run_isa(dry: bool = False) -> dict:
     else:
         _r.delete(K_APPROVE)
 
+    # 매수 선택제 — 매수는 임의 실행 금지(사용자 결정). 봇이 A/B/C 옵션+예측을 제시하고
+    # 사용자가 고른 안(K_BUYOK)만 실행. 무응답=보류(현금 유지). 매도만 아래 자동 경로로.
+    sells_auto = [o for o in orders if o["side"] == "sell"]
+    plan_buys = [o for o in orders if o["side"] == "buy"]
+    chosen_opt = ""
+    raw = _r.get(K_BUYOK)
+    if raw and plan_buys is not None:
+        try:
+            ch = json.loads(raw)
+            chosen_opt = ch.get("opt", "?")
+            picked = [o for o in ch.get("orders", []) if o.get("qty", 0) > 0]
+            for o in picked:
+                o["why"] = o.get("why", "비중부족 매수") + f"({chosen_opt}안 선택)"
+            orders = sells_auto + picked
+        except Exception:  # noqa: BLE001
+            orders = sells_auto
+    else:
+        orders = sells_auto
+
     auto_on = (_r.get(K_AUTO) or b"").decode() == "on"
     result = {"dry": dry, "auto": auto_on, "eff": {k: round(v, 3) for k, v in eff.items()},
               "info": info, "snap": snap, "div_hold": div_hold, "need_approval": need_approval,
+              "buy_wait": ([{k: o[k] for k in ("code", "name", "side", "qty", "krw", "why")}
+                            for o in plan_buys] if not chosen_opt else []),
+              "buy_opt": chosen_opt,
               "orders": [{k: o[k] for k in ("code", "name", "side", "qty", "krw", "why")} for o in orders],
               "executed": []}
     if div_hold:
@@ -356,15 +406,30 @@ def run_isa(dry: bool = False) -> dict:
     # 상태 캐시(대시보드)
     _r.set(K_STATUS, json.dumps({**result, "ts": str(datetime.now())[:16]},
                                 ensure_ascii=False), ex=86400)
-    if not orders:
-        log.info("ISA: 밴드 내 — 매매 없음 (총 %s원, dd %s%%)", snap["total"], info["dd"])
-        return result
     if dry:
-        log.info("ISA[DRY] 주문플랜 %d건:\n%s", len(orders), _fmt_orders(orders))
+        log.info("ISA[DRY] 자동주문 %d건 / 매수제안 대기 %d건", len(orders), len(plan_buys))
         return result
     if not auto_on:
-        notify("ℹ️ [ISA] 리밸런싱 신호가 있지만 자동매매가 꺼져 있어요(대시보드에서 ON 가능)\n"
-               + _fmt_orders(orders))
+        if orders or plan_buys:
+            notify("ℹ️ [ISA] 신호가 있지만 자동매매가 꺼져 있어요(대시보드에서 ON 가능)\n"
+                   + _fmt_orders(orders + plan_buys))
+        return result
+    # 매수 제안 생성(주문 실행과 독립) — 이미 제안 중이거나 오늘 '보류' 선택했으면 재제안 안 함
+    if (plan_buys and not chosen_opt and not _r.get(K_BUYPROP)
+            and not _r.get(K_BUYNO + datetime.now().strftime("%Y%m%d"))):
+        options, bnotes = _buy_options(plan_buys, kis)
+        prop = {"ts": str(datetime.now())[:16], "notes": bnotes, "options": [
+            {"opt": op["opt"], "label": op["label"], "orders": op["orders"],
+             "desc": " + ".join(f"{o['name']} {o['qty']}주" for o in op["orders"]) or "매수 없음"}
+            for op in options]}
+        _r.set(K_BUYPROP, json.dumps(prop, ensure_ascii=False), ex=6 * 3600)
+        txt = "\n".join(f"   {op['opt']}) {op['label']} — {op['desc']}" for op in prop["options"])
+        nts = "\n".join(f"   🔮 {TARGETS[c]['name']}: {n}" for c, n in bnotes.items())
+        notify("🛒 [ISA] 매수 제안 — 대시보드 🔔에서 골라주세요 (무응답 = 보류, 임의 매수 안 해요)\n"
+               + txt + (("\n" + nts) if nts else ""))
+    if not orders:
+        log.info("ISA: 자동실행 주문 없음 (총 %s원, dd %s%%, 매수제안 %d건)",
+                 snap["total"], info["dd"], len(plan_buys))
         return result
     if not _kr_open():
         log.info("ISA: 장 마감 — 주문 보류")
@@ -396,6 +461,8 @@ def run_isa(dry: bool = False) -> dict:
         waited += 20
         if _r.get(K_CANCEL):
             _r.delete(K_PENDING)
+            if chosen_opt:
+                _r.delete(K_BUYOK)                        # 선택한 매수안도 함께 취소
             notify("🚫 [ISA] 사용자가 취소했어요 — 주문 미실행")
             result["executed"] = ["cancelled"]
             return result
@@ -420,6 +487,8 @@ def run_isa(dry: bool = False) -> dict:
                                  order_id=res.order_id, reason=o["why"],
                                  message=(res.message or "")[:250]))
         session.commit()
+    if chosen_opt:
+        _r.delete(K_BUYOK)                                # 선택 매수안은 1회용 — 실행 후 소모
     notify("🤖 [ISA 자동매매] 실행 결과\n" + "\n".join("   " + x for x in result["executed"]))
     _r.set(K_STATUS, json.dumps({**result, "ts": str(datetime.now())[:16]},
                                 ensure_ascii=False), ex=86400)

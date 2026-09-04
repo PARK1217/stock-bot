@@ -1230,7 +1230,37 @@ def isa_status():
             return None
     return {"auto": (_r.get(it.K_AUTO) or b"").decode() == "on",
             "status": _j(it.K_STATUS), "pending": _j(it.K_PENDING),
-            "approve": _j(it.K_APPROVE)}
+            "approve": _j(it.K_APPROVE), "buyprop": _j(it.K_BUYPROP)}
+
+
+@app.post("/api/isa/buypick")
+def isa_buypick(body: dict):
+    """매수 제안 선택 — A/B=해당 안을 다음 점검 때 실행, C=오늘 보류(현금 유지)."""
+    from bot import isatrader as it
+    opt = str(body.get("opt") or "").upper()
+    try:
+        prop = json.loads(_r.get(it.K_BUYPROP) or b"{}")
+    except Exception:  # noqa: BLE001
+        prop = {}
+    pick = next((o for o in prop.get("options", []) if o.get("opt") == opt), None)
+    if not pick:
+        return {"ok": False, "error": "no such option"}
+    from datetime import datetime as _dt
+    if opt == "C" or not pick.get("orders"):
+        _r.set(it.K_BUYNO + _dt.now().strftime("%Y%m%d"), "1", ex=86400)
+        msg = "🛒 [ISA] 매수 보류 선택 — 오늘은 현금 유지, 내일 다시 점검해요"
+    else:
+        _r.set(it.K_BUYOK, json.dumps({"opt": opt, "orders": pick["orders"]},
+                                      ensure_ascii=False), ex=86400)
+        msg = (f"🛒 [ISA] {opt}안 선택됨 — {pick.get('label','')} "
+               "(다음 점검 9:20/13:00/14:40 때 실행)")
+    _r.delete(it.K_BUYPROP)
+    try:
+        from bot.notify import notify
+        notify(msg)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "opt": opt}
 
 
 @app.post("/api/isa/approve")

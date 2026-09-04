@@ -260,7 +260,8 @@
       <b class="k">밴드 ±25% 리밸런싱 · MA50 추세방어 · 낙폭 -10% 가드 · 💰배당가드</b>
       (배당락 임박 D-3이면 트림 매도를 보류해 분배금 수령 — 방어 매도는 배당보다 우선).
       <b class="k">🙋장기보유(미국S&P·미국배당·한국)는 매도 전 반드시 사용자 승인</b> — 승인 전엔 안 팔아요.
-      그 외 주문은 <b class="k">10분 전 디스코드 예고 후 자동 실행</b>(여기서 취소 가능).</div>
+      <b class="k">🛒매수는 전부 선택제</b> — 봇이 A/B/C안+예측을 제시하고 고른 안만 실행(무응답=보류).
+      자동 실행은 <b class="k">금·단기채 방어 매도뿐</b>(10분 전 예고, 취소 가능).</div>
     <div id="isa-auto"><div class="empty">불러오는 중…</div></div>
   </div>
 
@@ -1250,6 +1251,16 @@ async function loadIsaAuto(){
         <button class="help-btn" onclick="approveIsa('${o.code}',true)">✅ 매도 승인</button>
         <button class="help-btn" onclick="approveIsa('${o.code}',false)">❌ 계속 보유</button>`).join('<br>')+'</div>';
   }
+  if(d.buyprop&&d.buyprop.options){                           // 🛒 매수 선택제: 골라야 매수 실행
+    const ns=(d.buyprop.notes)||{};
+    html+='<div class="help-box" style="background:#16261d"><b>🛒 매수 제안 — 골라주세요</b> (무응답=보류, 임의 매수 없음)<br>'
+      +d.buyprop.options.map(o=>`<button class="help-btn" style="margin:3px 6px 0 0" onclick="pickBuy('${o.opt}')">${o.opt}안 선택</button>${esc(o.label)} — <span class="mut">${esc(o.desc)}</span>`).join('<br>')
+      +(Object.keys(ns).length?'<div style="margin-top:5px" class="mut">'+Object.entries(ns).map(([c,n])=>`🔮 ${esc(ISA_NM[c]||c)}: ${esc(n)}`).join('<br>')+'</div>':'')
+      +'</div>';
+  }
+  if(s.buy_opt){                                              // 선택된 매수안 대기 표시
+    html+=`<div style="padding:0 14px 6px;font-size:12px;color:var(--up)">🛒 ${esc(s.buy_opt)}안 선택됨 — 다음 점검 때 매수 실행</div>`;
+  }
   if(s.div_hold&&s.div_hold.length){                          // 배당가드: 분배금 수령 위해 매도 보류중
     html+='<div style="padding:0 14px 6px;font-size:12px;color:var(--warn)">💰 '
       +s.div_hold.map(x=>esc(x)).join(' · ')+'</div>';
@@ -1281,6 +1292,14 @@ async function approveIsa(code,ok){
   const p=document.getElementById('notifPanel');
   if(p&&p.style.display!=='none')renderNotifs();   // 알림 팝업에서 눌렀으면 팝업도 갱신
 }
+async function pickBuy(opt){
+  if(!confirm(opt==='C'?'오늘 매수를 보류할까요? (현금 유지)':opt+'안으로 매수할까요?\n다음 점검(9:20/13:00/14:40) 때 실행됩니다.'))return;
+  await fetch('/api/isa/buypick',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({opt:opt})});
+  loadIsaAuto();
+  const p=document.getElementById('notifPanel');
+  if(p&&p.style.display!=='none')renderNotifs();
+}
 // ---------- 🔔 알림센터 ----------
 let NOTIF=[];
 function notifSeen(){try{return +(localStorage.getItem('sbNotifSeen')||0)}catch(e){return 0}}
@@ -1297,12 +1316,19 @@ async function renderNotifs(){
   const body=document.getElementById('notifBody'); if(!body)return;
   const seen=notifSeen();
   let html='';
-  try{const s=await j('/api/isa/status');                       // 승인 대기(매도 동의)는 맨 위 고정
+  try{const s=await j('/api/isa/status');                       // 승인 대기·매수 제안은 맨 위 고정
     if(s&&s.approve&&s.approve.length){
       html+='<div class="notif-i" style="background:#241a30"><b>🙋 매도 동의 필요</b> — 장기보유 종목<br>'
         +s.approve.map(o=>`· ${esc(o.name)} ${o.qty}주 ≈${(o.krw||0).toLocaleString()}원 <span class="mut">(${esc(o.why)})</span><br>
           <button class="help-btn" onclick="approveIsa('${o.code}',true)">✅ 매도 승인</button>
           <button class="help-btn" onclick="approveIsa('${o.code}',false)">❌ 계속 보유</button>`).join('<br>')+'</div>';
+    }
+    if(s&&s.buyprop&&s.buyprop.options){
+      const ns=s.buyprop.notes||{};
+      html+='<div class="notif-i" style="background:#16261d"><b>🛒 매수 제안 — 골라주세요</b> (무응답=보류)<br>'
+        +s.buyprop.options.map(o=>`<button class="help-btn" style="margin:3px 6px 0 0" onclick="pickBuy('${o.opt}')">${o.opt}안</button>${esc(o.label)} — <span class="mut">${esc(o.desc)}</span>`).join('<br>')
+        +(Object.keys(ns).length?'<div style="margin-top:5px" class="mut">'+Object.entries(ns).map(([c,n])=>`🔮 ${esc(ISA_NM[c]||c)}: ${esc(n)}`).join('<br>')+'</div>':'')
+        +'</div>';
     }}catch(e){}
   html+=NOTIF.length?NOTIF.map(n=>
     `<div class="notif-i${(n.ts||0)>seen?' new':''}"><div class="t">${fmtNt(n.ts)}</div>${esc(n.text||'')}</div>`).join('')
