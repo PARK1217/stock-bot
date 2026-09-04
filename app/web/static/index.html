@@ -123,6 +123,21 @@
   .pfil button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   .pfil select{background:#11141a;border:1px solid var(--line);color:var(--fg);border-radius:7px;
     padding:4px 8px;font-size:11.5px}
+  /* 알림센터(🔔) */
+  .bell{position:relative;background:#1a1e26;border:1px solid var(--line);border-radius:8px;
+    padding:4px 9px;font-size:15px;cursor:pointer;line-height:1}
+  .bell:active{transform:scale(.94)}
+  .bell-b{position:absolute;top:-6px;right:-6px;background:var(--down);color:#fff;font-size:10px;
+    font-weight:700;border-radius:9px;padding:1px 5px;min-width:10px;text-align:center}
+  .notif-p{position:fixed;top:64px;right:10px;z-index:60;width:min(420px,92vw);max-height:72vh;
+    overflow-y:auto;background:#14181f;border:1px solid var(--line);border-radius:14px;
+    box-shadow:0 12px 34px rgba(0,0,0,.55)}
+  .notif-h{padding:11px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:13px;
+    display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#14181f}
+  .notif-i{padding:10px 14px;border-bottom:1px solid var(--line);font-size:12.5px;line-height:1.55;
+    white-space:pre-wrap;word-break:break-word}
+  .notif-i .t{color:var(--mut);font-size:10.5px;margin-bottom:3px}
+  .notif-i.new{background:#181f2c}
   .help-box .k{color:var(--fg);font-weight:600} .help-box .row-h{margin-top:5px}
   .chat-msgs{max-height:360px;overflow-y:auto}
   .chat-m{padding:9px 14px;font-size:13.5px;line-height:1.65;border-bottom:1px solid var(--line)}
@@ -180,6 +195,7 @@
       <button class="user-btn on" data-u="me" onclick="setUser('me')">나</button>
       <button class="user-btn" data-u="spouse" onclick="setUser('spouse')">남편</button>
     </span>
+    <button id="bellBtn" class="bell" onclick="toggleNotif()" title="알림 모아보기">🔔<span id="bellBadge" class="bell-b" style="display:none"></span></button>
     <div class="h-tot">
       <div class="v num" id="total">—</div>
       <div class="r num" id="rets"></div>
@@ -1262,7 +1278,47 @@ async function approveIsa(code,ok){
   await fetch('/api/isa/approve',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({code:code,ok:ok})});
   loadIsaAuto();
+  const p=document.getElementById('notifPanel');
+  if(p&&p.style.display!=='none')renderNotifs();   // 알림 팝업에서 눌렀으면 팝업도 갱신
 }
+// ---------- 🔔 알림센터 ----------
+let NOTIF=[];
+function notifSeen(){try{return +(localStorage.getItem('sbNotifSeen')||0)}catch(e){return 0}}
+async function loadNotifs(){
+  const d=await j('/api/notifications'); if(!d)return;
+  NOTIF=d.items||[];
+  const un=NOTIF.filter(n=>(n.ts||0)>notifSeen()).length;
+  const b=document.getElementById('bellBadge');
+  if(b){b.textContent=un>9?'9+':un; b.style.display=un>0?'':'none';}
+}
+function fmtNt(ts){if(!ts)return'';const d=new Date(ts*1000);
+  return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;}
+async function renderNotifs(){
+  const body=document.getElementById('notifBody'); if(!body)return;
+  const seen=notifSeen();
+  let html='';
+  try{const s=await j('/api/isa/status');                       // 승인 대기(매도 동의)는 맨 위 고정
+    if(s&&s.approve&&s.approve.length){
+      html+='<div class="notif-i" style="background:#241a30"><b>🙋 매도 동의 필요</b> — 장기보유 종목<br>'
+        +s.approve.map(o=>`· ${esc(o.name)} ${o.qty}주 ≈${(o.krw||0).toLocaleString()}원 <span class="mut">(${esc(o.why)})</span><br>
+          <button class="help-btn" onclick="approveIsa('${o.code}',true)">✅ 매도 승인</button>
+          <button class="help-btn" onclick="approveIsa('${o.code}',false)">❌ 계속 보유</button>`).join('<br>')+'</div>';
+    }}catch(e){}
+  html+=NOTIF.length?NOTIF.map(n=>
+    `<div class="notif-i${(n.ts||0)>seen?' new':''}"><div class="t">${fmtNt(n.ts)}</div>${esc(n.text||'')}</div>`).join('')
+    :'<div class="empty">알림 없음</div>';
+  body.innerHTML=html;
+}
+async function toggleNotif(){
+  const p=document.getElementById('notifPanel'); if(!p)return;
+  const show=p.style.display==='none';
+  if(show){await loadNotifs(); await renderNotifs(); p.style.display='';
+    const mx=Math.max(0,...NOTIF.map(n=>n.ts||0));              // 열면 읽음 처리(배지 소거)
+    try{localStorage.setItem('sbNotifSeen',mx)}catch(e){}
+    const b=document.getElementById('bellBadge'); if(b)b.style.display='none';
+  }else p.style.display='none';
+}
+loadNotifs(); setInterval(loadNotifs,30000);
 function loadAll(){
   loadNames();loadRealized();
   loadPortfolio();loadProposals();loadPred();loadScreen();loadScreenKr();loadBT();
@@ -1279,6 +1335,13 @@ setInterval(()=>{loadPortfolio();loadCash();loadOrders();loadProposals();loadPre
   if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(PTR.page);loadIsaAuto();}},60000);
 setInterval(()=>{if(WHO!=='spouse')loadIsaAuto();},15000);      // 대기주문 취소창은 15초 갱신
 </script>
+
+<!-- 🔔 알림센터 팝업 -->
+<div id="notifPanel" class="notif-p" style="display:none">
+  <div class="notif-h"><span>🔔 알림</span>
+    <button class="help-btn" onclick="toggleNotif()">닫기 ✕</button></div>
+  <div id="notifBody"><div class="empty">알림 없음</div></div>
+</div>
 
 <!-- 주린이 '쉬운 용어' 도움말 (검증세션 추가, 기존 렌더링 무간섭) -->
 <button id="glossBtn" onclick="openGloss()" title="어려운 말 풀이 보기"

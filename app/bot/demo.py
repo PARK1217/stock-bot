@@ -558,6 +558,10 @@ def _demo_api_raw(method: str, path: str, query: dict, body: dict | None) -> dic
     if path == "/api/chat":
         return {"reply": CHAT_REPLY, "cached": False, "session_id": 1, "message_id": 1}
 
+    # 알림센터(데모: 예시 1건만 — 실계정 알림 미노출)
+    if path == "/api/notifications":
+        return {"items": [{"ts": 0, "text": "🔔 (데모) 실계정에선 자동매매·리서치 알림이 여기에 모여요"}]}
+
     # ISA 자동매매(실계좌 기능 — 데모는 상태 숨김·무동작. 실주문 경로 완전 차단)
     if path == "/api/isa/status":
         return {"auto": False, "status": None, "pending": None}

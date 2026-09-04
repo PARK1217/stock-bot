@@ -1201,6 +1201,22 @@ def chateval_log(body: dict):
     return {"ok": True, "calls": n}
 
 
+# ---------------- 알림센터(🔔) — 디스코드로 나간 알림을 대시보드에서 모아보기 ----------------
+@app.get("/api/notifications")
+def notifications(limit: int = 50):
+    """notify()가 적재한 알림 로그(최신순). 대시보드 종모양 팝업."""
+    out = []
+    try:
+        for v in _r.lrange("notif:log", 0, max(1, min(limit, 100)) - 1):
+            try:
+                out.append(json.loads(v))
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        pass
+    return {"items": out}
+
+
 # ---------------- ISA 자동매매(실계좌) 컨트롤 ----------------
 @app.get("/api/isa/status")
 def isa_status():
