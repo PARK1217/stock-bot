@@ -36,9 +36,10 @@ _r = redis.from_url(settings.redis_url)
 # ---------------- 설정 ----------------
 # B 균형형 목표비중(현금 5% 버퍼 별도). 전부 국내상장·비레버리지 = ISA 가능.
 TARGETS: dict[str, dict] = {
-    "360200": {"name": "ACE 미국S&P500",        "w": 0.26, "sleeve": "equity"},
-    "458730": {"name": "TIGER 미국배당다우존스", "w": 0.14, "sleeve": "equity"},
-    "310970": {"name": "TIGER MSCI Korea",      "w": 0.12, "sleeve": "equity"},
+    # lt=True: 장기 우상향 보유 종목 — 매도는 사용자 '승인' 후에만(자동매도 금지, 사용자 결정 2026-09-04)
+    "360200": {"name": "ACE 미국S&P500",        "w": 0.26, "sleeve": "equity", "lt": True},
+    "458730": {"name": "TIGER 미국배당다우존스", "w": 0.14, "sleeve": "equity", "lt": True},
+    "310970": {"name": "TIGER MSCI Korea",      "w": 0.12, "sleeve": "equity", "lt": True},
     "132030": {"name": "KODEX 골드선물(H)",     "w": 0.17, "sleeve": "gold"},
     "157450": {"name": "TIGER 단기통안채",      "w": 0.26, "sleeve": "haven"},
 }
@@ -74,6 +75,8 @@ K_PEAK = "isa:peak"          # 계좌 고점(낙폭 가드)
 K_GUARD = "isa:ddguard"      # 낙폭 가드 발동 상태
 K_STATUS = "isa:status"      # 대시보드 상태 캐시
 K_ODAY = "isa:ocount:"       # +YYYYMMDD 일일 주문 카운터
+K_APPROVE = "isa:approve"    # 승인 대기 매도 목록(json) — 장기보유(lt) 종목 매도는 동의 필요
+# isa:ok:{code}(24h)=매도 승인됨 / isa:no:{code}(3일)=거절(재요청 억제) / isa:asked:{code}(1일)=알림 중복방지
 
 
 def _kr_open() -> bool:
@@ -314,9 +317,37 @@ def run_isa(dry: bool = False) -> dict:
                 continue
         kept.append(o)
     orders = kept
+    # 장기보유 승인가드 — 우상향 장기종목(lt)의 매도는 사용자 동의 후에만 실행(자동매도 금지).
+    # 승인(isa:ok) 있으면 이번 런에 포함, 거절(isa:no)이면 3일간 조용히 보류, 아니면 동의 요청.
+    need_approval, kept2 = [], []
+    for o in orders:
+        if o["side"] == "sell" and TARGETS.get(o["code"], {}).get("lt"):
+            if _r.get(f"isa:ok:{o['code']}"):
+                o["why"] += "(사용자 승인)"
+                kept2.append(o)
+                continue
+            if _r.get(f"isa:no:{o['code']}"):
+                continue
+            need_approval.append({k: o[k] for k in ("code", "name", "side", "qty", "krw", "why")})
+            continue
+        kept2.append(o)
+    orders = kept2
+    if need_approval:
+        _r.set(K_APPROVE, json.dumps(need_approval, ensure_ascii=False), ex=86400)
+        if not dry:
+            for o in need_approval:                       # 하루 1회만 알림(스팸 방지)
+                nk = f"isa:asked:{o['code']}"
+                if not _r.get(nk):
+                    _r.set(nk, "1", ex=86400)
+                    notify("🙋 [ISA] 장기보유 종목 매도 동의 요청 — 대시보드에서 승인/거절 해주세요\n"
+                           f"   · {o['side'].upper()} {o['name']} {o['qty']}주 ≈{o['krw']:,}원 ({o['why']})\n"
+                           "   (승인 전까지 매도하지 않아요. 승인 시 다음 점검 때 실행)")
+    else:
+        _r.delete(K_APPROVE)
+
     auto_on = (_r.get(K_AUTO) or b"").decode() == "on"
     result = {"dry": dry, "auto": auto_on, "eff": {k: round(v, 3) for k, v in eff.items()},
-              "info": info, "snap": snap, "div_hold": div_hold,
+              "info": info, "snap": snap, "div_hold": div_hold, "need_approval": need_approval,
               "orders": [{k: o[k] for k in ("code", "name", "side", "qty", "krw", "why")} for o in orders],
               "executed": []}
     if div_hold:
@@ -381,6 +412,8 @@ def run_isa(dry: bool = False) -> dict:
             time.sleep(0.4)
             _r.incr(dkey); _r.expire(dkey, 86400)
             mark = "✅" if res.ok else "❌"
+            if res.ok and o["side"] == "sell" and TARGETS.get(o["code"], {}).get("lt"):
+                _r.delete(f"isa:ok:{o['code']}")          # 승인은 1회용 — 실행 후 소모
             result["executed"].append(f"{mark} {o['side']} {o['code']} {o['qty']}: {res.message}")
             session.add(OrderLog(broker="kis-isa", mode="live", symbol=o["code"],
                                  side=o["side"], qty=o["qty"], ok=res.ok, price=o["price"],

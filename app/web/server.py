@@ -1213,7 +1213,42 @@ def isa_status():
         except Exception:  # noqa: BLE001
             return None
     return {"auto": (_r.get(it.K_AUTO) or b"").decode() == "on",
-            "status": _j(it.K_STATUS), "pending": _j(it.K_PENDING)}
+            "status": _j(it.K_STATUS), "pending": _j(it.K_PENDING),
+            "approve": _j(it.K_APPROVE)}
+
+
+@app.post("/api/isa/approve")
+def isa_approve(body: dict):
+    """장기보유(lt) 종목 매도 동의/거절. ok=True→승인(다음 점검 때 매도), False→3일간 보류."""
+    from bot import isatrader as it
+    code = str(body.get("code") or "")
+    if code not in it.TARGETS:
+        return {"ok": False, "error": "unknown code"}
+    name = it.TARGETS[code]["name"]
+    if bool(body.get("ok")):
+        _r.set(f"isa:ok:{code}", "1", ex=86400)
+        _r.delete(f"isa:no:{code}")
+        msg = f"✅ [ISA] {name} 매도 승인됨 — 다음 점검(9:20/13:00/14:40) 때 실행해요"
+    else:
+        _r.set(f"isa:no:{code}", "1", ex=3 * 86400)
+        _r.delete(f"isa:ok:{code}")
+        msg = f"❌ [ISA] {name} 매도 거절 — 3일간 다시 묻지 않아요(계속 보유)"
+    # 승인대기 목록에서 해당 종목 제거
+    try:
+        cur = json.loads(_r.get(it.K_APPROVE) or b"[]")
+        cur = [o for o in cur if o.get("code") != code]
+        if cur:
+            _r.set(it.K_APPROVE, json.dumps(cur, ensure_ascii=False), ex=86400)
+        else:
+            _r.delete(it.K_APPROVE)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from bot.notify import notify
+        notify(msg)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True}
 
 
 @app.post("/api/isa/auto")

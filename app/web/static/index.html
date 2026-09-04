@@ -243,7 +243,8 @@
     <div class="help-box">B 균형형 5종(미국S&P·미국배당·한국·금H·단기채) 고정배분 —
       <b class="k">밴드 ±25% 리밸런싱 · MA50 추세방어 · 낙폭 -10% 가드 · 💰배당가드</b>
       (배당락 임박 D-3이면 트림 매도를 보류해 분배금 수령 — 방어 매도는 배당보다 우선).
-      주문은 <b class="k">10분 전 디스코드 예고 후 자동 실행</b>(여기서 취소 가능).</div>
+      <b class="k">🙋장기보유(미국S&P·미국배당·한국)는 매도 전 반드시 사용자 승인</b> — 승인 전엔 안 팔아요.
+      그 외 주문은 <b class="k">10분 전 디스코드 예고 후 자동 실행</b>(여기서 취소 가능).</div>
     <div id="isa-auto"><div class="empty">불러오는 중…</div></div>
   </div>
 
@@ -1227,6 +1228,12 @@ async function loadIsaAuto(){
         return `<span class="tag" style="margin:2px 6px 2px 0;${bad?'color:var(--warn)':''}">${ISA_NM[c]||c} ${(w*100).toFixed(0)}%${bad?' ⚠️'+tr:''}</span>`;
       }).join('')+'</div>';
   }
+  if(d.approve&&d.approve.length){                            // 장기보유 매도 동의 요청(승인해야 매도)
+    html+='<div class="help-box" style="background:#241a30"><b>🙋 매도 동의 필요</b> — 장기보유 종목은 승인해야 팔아요<br>'
+      +d.approve.map(o=>`· ${esc(o.name)} ${o.qty}주 ≈${(o.krw||0).toLocaleString()}원 <span class="mut">(${esc(o.why)})</span>
+        <button class="help-btn" onclick="approveIsa('${o.code}',true)">✅ 매도 승인</button>
+        <button class="help-btn" onclick="approveIsa('${o.code}',false)">❌ 계속 보유</button>`).join('<br>')+'</div>';
+  }
   if(s.div_hold&&s.div_hold.length){                          // 배당가드: 분배금 수령 위해 매도 보류중
     html+='<div style="padding:0 14px 6px;font-size:12px;color:var(--warn)">💰 '
       +s.div_hold.map(x=>esc(x)).join(' · ')+'</div>';
@@ -1248,6 +1255,12 @@ async function toggleIsaAuto(){
 }
 async function cancelIsa(){
   await fetch('/api/isa/cancel',{method:'POST'});
+  loadIsaAuto();
+}
+async function approveIsa(code,ok){
+  if(ok&&!confirm('장기보유 종목을 매도 승인할까요?\n다음 점검(9:20/13:00/14:40) 때 실행됩니다.'))return;
+  await fetch('/api/isa/approve',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({code:code,ok:ok})});
   loadIsaAuto();
 }
 function loadAll(){
