@@ -419,7 +419,8 @@ def demo_chat_context() -> str:
     for x in sorted(TOSS_POS, key=lambda z: -z["value_krw"])[:8]:
         L.append(f"  - {x['symbol']}({x.get('name','')}) {x['qty']:g}주 수익률 {x['pnl_pct']}% "
                  f"평가 {_mw(x['value_krw'])}")
-    L.append(f"[한투 실계좌(데모) 총 {_mw(KIS_VAL)}]")
+    _kis_tot_pct = _round2((KIS_VAL / KIS_COST - 1) * 100)   # 대시보드 /api/kis와 동일 식 → 수치 일치
+    L.append(f"[한투 실계좌(데모) 총 {_mw(KIS_VAL)}, 전체 {'+' if _kis_tot_pct >= 0 else ''}{_kis_tot_pct}%]")
     for x in KIS_POS:
         L.append(f"  - [{x['account']}] {x['symbol']}({x.get('name','')}) {x['qty']:g}주 {x['pnl_pct']}%")
     L.append("[미국 추세 스크리너 상위(점수=상승세 순위, 매수신호 아님)]")
