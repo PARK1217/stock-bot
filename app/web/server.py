@@ -890,6 +890,23 @@ def assets(limit: int = 90):
     }
 
 
+def _manwon(v) -> str:
+    """금액을 만원/억원 단위로 — LLM이 콤마 원단위(538,000원)를 '538만원'으로 잘못 읽는
+    단위 환각 방지(QA 리뷰 지적: 금액 10배 오류). 챗봇 컨텍스트엔 이 표기만 쓴다."""
+    try:
+        v = float(v or 0)
+    except (TypeError, ValueError):
+        return "0원"
+    a = abs(v)
+    if a >= 1e8:
+        s = f"{v/1e8:.1f}".rstrip("0").rstrip(".")
+        return f"{s}억원"
+    if a >= 1e4:
+        s = f"{v/1e4:.1f}".rstrip("0").rstrip(".")
+        return f"{s}만원"
+    return f"{round(v):,}원"
+
+
 def _chat_context(who: str = "me") -> str:
     """챗봇 근거 데이터 — 보유·스크리너·신뢰도·계좌제약. who=spouse면 남편 토스만."""
     L = []
@@ -898,16 +915,16 @@ def _chat_context(who: str = "me") -> str:
         p = portfolio("", "spouse") if sp else portfolio("")
         lbl = "남편 토스 계좌(미국)" if sp else "토스 실계좌(미국)"
         toss_tot = (p.get("cash", 0) or 0) + sum(x["value_krw"] for x in p.get("positions", []))
-        L.append(f"[{lbl} 총 {round(toss_tot):,}원, 현금 {round(p.get('cash',0)):,}원, "
+        L.append(f"[{lbl} 총 {_manwon(toss_tot)}, 현금 {_manwon(p.get('cash',0))}, "
                  f"오늘 {p.get('daily_pnl_pct')}% / 전체 {p.get('total_pnl_pct')}%]")
         for x in sorted(p.get("positions", []), key=lambda z: -z["value_krw"])[:15]:
-            L.append(f"  - {x['symbol']} {x['qty']:g}주 수익률 {x['pnl_pct']}% 평가 {round(x['value_krw']):,}원")
+            L.append(f"  - {x['symbol']} {x['qty']:g}주 수익률 {x['pnl_pct']}% 평가 {_manwon(x['value_krw'])}")
     except Exception:  # noqa: BLE001
         pass
     if not sp:
         try:
             k = kis_accounts()
-            L.append(f"[한투 실계좌 총 {round(k.get('total',0)):,}원, 전체 {k.get('total_pnl_pct')}%]")
+            L.append(f"[한투 실계좌 총 {_manwon(k.get('total',0))}, 전체 {k.get('total_pnl_pct')}%]")
             for x in k.get("positions", []):
                 L.append(f"  - [{x['account']}] {x['symbol']} {x['name']} {x['qty']:g}주 {x['pnl_pct']}%")
         except Exception:  # noqa: BLE001
@@ -1148,13 +1165,22 @@ def chat(body: dict, request: Request):
         f"0) [주린이 모드·최우선] {BEGINNER_RULE}\n"   # 용어 풀이 정책 단일 출처(glossary)
         "1) 매수/매도 의견은 반드시 데이터 근거와 함께. 데이터에 없는 사실은 지어내지 말고 모른다고 한다.\n"
         "2) 스크리너 점수는 매수신호가 아님(신뢰도 참고). 계좌 매매제약을 꼭 반영.\n"
-        "3) 단정/보장 금지. '참고이며 최종 결정과 책임은 본인'임을 의식하되 매 답변에 길게 면책 달지 말 것.\n"
+        "3) 단정/보장 금지. 특히 '사도 됩니다/사도 괜찮아요/파세요' 같은 결정 단정 표현 금지 — "
+        "'~한 신호예요. 결정은 본인 몫이에요' 화법으로. 매 답변에 길게 면책 달지는 말 것.\n"
         "4) 과거와 미래를 반드시 구분: '과거에 N% 올랐다(=이미 지난 일)'와 '앞으로 모델 추정 N%/"
         "상승확률 N%(=예측)'를 헷갈리지 않게 따로 말한다.\n"
         "5) [간결·주린이용] 짧게! 핵심 2~3개 불릿(각 1줄)만, 전체 5~6줄 이내로 압축(장황 금지). "
-        "따뜻한 말투. 답변 맨 끝에 반드시 '👉 쉽게 말하면: …' 한 줄 요약.\n"
+        "따뜻한 말투. 마크다운 표(| 기호)는 렌더링이 안 되니 절대 금지 — 불릿·짧은 줄만. "
+        "답변 맨 끝에 반드시 '👉 쉽게 말하면: …' 한 줄 요약.\n"
         "6) [종목 리서치 블록이 있으면] 그래프 기반 모델 상승확률·뉴스/공시 감성·웹반응 세 신호를 "
-        "각각 짚고 종합해 '📊 종합 전망' 한 줄을 낸다(신호가 엇갈리면 그 점을 명시). 단정 아닌 확률로.\n\n"
+        "각각 짚고 종합해 '📊 종합 전망' 한 줄을 낸다(신호가 엇갈리면 그 점을 명시). 단정 아닌 확률로.\n"
+        "7) [숫자·금액 무결성] 금액·수량·수익률은 [현재 데이터] 표기를 '그대로' 옮겨 쓴다 — "
+        "단위 변환·재계산·반올림 금지(53.8만원을 538만원으로 쓰는 류의 오류 절대 금지). "
+        "수익률 부호도 그대로: +는 이익, -는 손실(+0.9%는 이익이지 '손익 없음'이 아님).\n"
+        "8) [예측 시점] 모델 예측은 21일(약 1개월) 기준뿐이다. '내일/이번주' 등 다른 시점을 물으면 "
+        "'가진 예측은 21일 기준'임을 먼저 밝히고 그 기준으로만 말한다(내일 예측인 척 금지).\n"
+        "9) [범위] 투자·시장·경제·내 계좌와 무관한 질문(음식·잡담 등)은 정중히 거절하고 "
+        "투자 관련 질문을 유도한다(예: '저는 투자 분석 챗봇이라 그건 도움드리기 어려워요 😅').\n\n"
         f"[현재 데이터]\n{ctx}\n\n[대화]{convo}\n사용자: {msg}\n분석봇:")
     who_acct = "demo" if demo else who   # 캐시 네임스페이스 분리 — 데모/실계정 답변 교차오염 방지
     # 동일 질문(+계좌+대화맥락)이면 LLM 재호출 없이 이전 답변 반환(토큰 절약). 시세변동 고려 30분.
@@ -1164,7 +1190,7 @@ def chat(body: dict, request: Request):
     reply = None
     try:
         from bot import chateval
-        res = chateval.llm_call(prompt, max_tokens=600)   # 간결화
+        res = chateval.llm_call(prompt, max_tokens=700)   # 간결화(600→700: 표 중간 잘림 QA 지적 보완)
         reply = res.get("text")
         if not demo:   # 데모는 chateval 로깅/콜채점 제외(실 로그 오염·브로커 price 호출 방지)
             from bot.screener import DEFAULT_WATCHLIST, KR_WATCHLIST, SINGLE_US, SINGLE_KR

@@ -398,16 +398,28 @@ def demo_top_holdings(n: int = 3):
     return out
 
 
+def _mw(v) -> str:
+    """만원/억원 단위 표기 — LLM이 콤마 원단위(538,000원)를 '538만원'으로 잘못 읽는
+    단위 환각 방지(server._manwon과 동일 규칙, 데모는 stdlib 유지 위해 복제)."""
+    v = float(v or 0)
+    a = abs(v)
+    if a >= 1e8:
+        return f"{v/1e8:.1f}".rstrip("0").rstrip(".") + "억원"
+    if a >= 1e4:
+        return f"{v/1e4:.1f}".rstrip("0").rstrip(".") + "만원"
+    return f"{round(v):,}원"
+
+
 def demo_chat_context() -> str:
     """데모 챗봇이 LLM에 넘길 '합성 포트폴리오' 컨텍스트(실계좌 _chat_context 대체).
     실제 보유/금액은 절대 노출하지 않고 데모 합성 숫자만 사용한다."""
     L = ["[※ 데모 계정 — 아래 보유·금액은 모두 예시(합성) 데이터입니다]"]
     toss_tot = TOSS_TOTAL
-    L.append(f"[토스(미국) 총 {round(toss_tot):,}원, 오늘 +0.6% / 전체 +7.1%]")
+    L.append(f"[토스(미국) 총 {_mw(toss_tot)}, 오늘 +0.6% / 전체 +7.1%]")
     for x in sorted(TOSS_POS, key=lambda z: -z["value_krw"])[:8]:
         L.append(f"  - {x['symbol']}({x.get('name','')}) {x['qty']:g}주 수익률 {x['pnl_pct']}% "
-                 f"평가 {round(x['value_krw']):,}원")
-    L.append(f"[한투 실계좌(데모) 총 {round(KIS_VAL):,}원]")
+                 f"평가 {_mw(x['value_krw'])}")
+    L.append(f"[한투 실계좌(데모) 총 {_mw(KIS_VAL)}]")
     for x in KIS_POS:
         L.append(f"  - [{x['account']}] {x['symbol']}({x.get('name','')}) {x['qty']:g}주 {x['pnl_pct']}%")
     L.append("[미국 추세 스크리너 상위(점수=상승세 순위, 매수신호 아님)]")
