@@ -96,6 +96,12 @@ def cmd_balance_all() -> None:
     notify(msg)
 
 
+def cmd_calib() -> None:
+    """캘리브레이션 주간 리포트 — 확률 과신 감시 + 틸트 A/B 비교(디스코드 발송)."""
+    from bot.calibreport import calib_report
+    log.info("캘리브레이션 리포트:\n%s", calib_report(send=True))
+
+
 def cmd_isa(dry: bool = False) -> None:
     """ISA 실계좌 자동매매(B균형형 고정배분+추세방어) — 알림후자동·킬스위치는 모듈이 처리."""
     from bot.isatrader import run_isa
@@ -380,12 +386,20 @@ def cmd_forecast_all() -> None:
                                              technical_tilt=tilt, news_sentiment=sent)
                         if fc is None:
                             continue
+                        # 틸트 A/B: 같은 시점 '틸트 없음' 원시 예측 병행 기록(채점 후 효과 측정용)
+                        fc_raw = None
+                        try:
+                            fc_raw = forecast_symbol(symbol, closes, hz)
+                        except Exception:  # noqa: BLE001
+                            pass
                         existing.add((symbol, hz))             # 같은 실행 내 중복도 차단
                         session.add(Prediction(
                             symbol=symbol, horizon_days=hz, base_price=fc.last,
                             prob_up=fc.prob_up, exp_return=fc.exp_return,
                             p50=fc.band["p50"], p10=fc.band["p10"], p90=fc.band["p90"],
-                            backtest_winrate=fc.backtest_winrate))
+                            backtest_winrate=fc.backtest_winrate,
+                            prob_up_raw=(fc_raw.prob_up if fc_raw else None),
+                            exp_return_raw=(fc_raw.exp_return if fc_raw else None)))
                         made[0] += 1
                 except Exception as e:  # noqa: BLE001
                     log.warning("%s 예측 실패: %s", symbol, e)
@@ -696,6 +710,7 @@ _SCHEDULE = [
     ("forecast_all", lambda: cmd_forecast_all(), "mon-fri", [(9, 30)]),
     ("accuracy", lambda: cmd_accuracy(), "mon-fri", [(16, 0)]),
     ("backtest", lambda: cmd_backtest(), "mon", [(8, 0)]),
+    ("calib_report", lambda: cmd_calib(), "mon", [(8, 10)]),   # 주간 캘리브레이션(과신 감시+틸트 A/B)
     ("paper", lambda: cmd_paper(), "mon-fri", [(9, 15), (12, 30), (15, 0), (23, 35)]),
     # ISA 실계좌(알림후자동 10분 지연 포함 → 15:20 장중 실행 가능하게 마지막 슬롯 14:40)
     ("isa", lambda: cmd_isa(), "mon-fri", [(9, 20), (13, 0), (14, 40)]),
@@ -784,6 +799,7 @@ COMMANDS = {
     "balance-all": cmd_balance_all,
     "paper": cmd_paper,
     "isa": cmd_isa,
+    "calib": cmd_calib,
     "isa-dry": lambda: cmd_isa(dry=True),
     "propose": cmd_propose,
     "screen": cmd_screen,

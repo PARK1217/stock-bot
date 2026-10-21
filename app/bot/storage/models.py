@@ -119,6 +119,10 @@ class Prediction(Base):
     p10: Mapped[float] = mapped_column(Float)
     p90: Mapped[float] = mapped_column(Float)
     backtest_winrate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 틸트 A/B 실험(2026-10-21~): 같은 시점에 '틸트 없이' 돌린 원시 예측도 병행 기록 →
+    # 채점 후 "뉴스/기술 틸트가 실제로 적중률을 올리나"를 측정(캘리브레이션 주간 리포트가 비교)
+    prob_up_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exp_return_raw: Mapped[float | None] = mapped_column(Float, nullable=True)
     # 평가(만기 후 채움)
     status: Mapped[str] = mapped_column(String(10), default="open", index=True)  # open|evaluated
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
