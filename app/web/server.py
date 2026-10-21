@@ -1434,11 +1434,30 @@ def isa_cancel():
     return {"ok": True}
 
 
+@app.post("/api/isa/peak-reset")
+def isa_peak_reset():
+    """입·출금 직후 낙폭가드 고점 리셋 — 다음 점검 때 현재 총평가가 새 고점이 됨.
+    (출금하면 총평가가 떨어져 가짜 '낙폭'으로 가드가 오발동하는 것 방지)"""
+    from bot import isatrader as it
+    _r.delete(it.K_PEAK)
+    _r.set(it.K_GUARD, "0")
+    try:
+        from bot.notify import notify
+        notify("🔄 [ISA] 낙폭가드 고점 리셋 — 입·출금 반영, 다음 점검부터 새 고점 기준")
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True}
+
+
 # ---------------- Chat 2.0: 세션·검색·평가·요약 ----------------
 @app.get("/api/chat/sessions")
 def chat_sessions(who: str = "me"):
     """지난 대화 세션 목록(날짜·제목·요약). 프론트 '🕘 이전 대화'."""
     from bot import chatstore
+    try:
+        chatstore.refresh_verdicts()          # 추이검증 배지 갱신(시간당 1회 내부 가드)
+    except Exception:  # noqa: BLE001
+        pass
     return {"sessions": chatstore.list_sessions(who), "stats": chatstore.rating_stats(who)}
 
 

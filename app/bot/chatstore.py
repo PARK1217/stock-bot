@@ -193,6 +193,71 @@ def rating_stats(who: str = "me") -> dict:
     return {"up": up, "down": down}
 
 
+# ---------------- 추이검증 배지(✅/❌) ----------------
+def refresh_verdicts() -> int:
+    """챗봇 콜 채점(chateval, 21일 뒤 실가격 채점)과 대화 메시지를 연결 — 답변별
+    verdict('맞음'/'틀림')를 채워 프론트 배지(✅추이 적중/❌빗나감)가 뜨게 한다.
+    질문 텍스트 prefix로 user 메시지를 찾고 그 다음 bot 답변에 기록. 시간당 1회만."""
+    import redis as _rd
+    from bot.config import settings as _st
+    r = _rd.from_url(_st.redis_url)
+    if r.get("chat:verdict:ran"):
+        return 0
+    r.set("chat:verdict:ran", "1", ex=3600)
+    from bot import chateval
+    calls = [c for c in chateval._all(chateval._CALLS)
+             if c.get("status") == "evaluated" and c.get("q")]
+    if not calls:
+        return 0
+    byq: dict[str, bool] = {}                 # 질문별: 콜 전부 적중=True, 하나라도 miss=False
+    for c in calls:
+        byq[c["q"]] = byq.get(c["q"], True) and bool(c.get("hit"))
+    n = 0
+    with SessionLocal() as s:
+        for q, all_hit in byq.items():
+            like = (q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")) + "%"
+            um = (s.query(ChatMessage)
+                  .filter(ChatMessage.role == "user", ChatMessage.content.like(like))
+                  .order_by(ChatMessage.id.desc()).first())
+            if not um:
+                continue
+            bm = (s.query(ChatMessage)
+                  .filter(ChatMessage.session_id == um.session_id,
+                          ChatMessage.role == "bot", ChatMessage.id > um.id)
+                  .order_by(ChatMessage.id.asc()).first())
+            verdict = "맞음" if all_hit else "틀림"
+            if bm and bm.verdict != verdict:
+                bm.verdict = verdict
+                n += 1
+        s.commit()
+    if n:
+        log.info("추이검증 배지 %d건 갱신", n)
+    return n
+
+
+# ---------------- 일일 유지보수(자동요약·빈세션 정리) ----------------
+def maintain(max_summaries: int = 4) -> dict:
+    """①비활성(12h↑)·요약 없는 세션 자동요약(LLM 호출 상한으로 비용 캡)
+    ②빈 세션(msg 0건·1일↑) 정리. 일일 배치(chat_maint)에서 호출."""
+    out = {"summarized": 0, "purged": 0}
+    cutoff = datetime.now() - timedelta(hours=12)
+    old = datetime.now() - timedelta(days=1)
+    with SessionLocal() as s:
+        for e in (s.query(ChatSession)
+                  .filter(ChatSession.msg_count == 0, ChatSession.started_at < old).all()):
+            s.delete(e)
+            out["purged"] += 1
+        targets = [t.id for t in (s.query(ChatSession)
+                   .filter(ChatSession.archived.is_(False), ChatSession.msg_count >= 4,
+                           ChatSession.summary == "", ChatSession.last_at < cutoff)
+                   .order_by(ChatSession.last_at.desc()).limit(max_summaries).all())]
+        s.commit()
+    for sid in targets:
+        if summarize(sid):
+            out["summarized"] += 1
+    return out
+
+
 # ---------------- 요약 ----------------
 def summarize(session_id: int) -> str:
     """세션 전체를 LLM으로 3줄 이내 요약해 session.summary에 저장·반환."""

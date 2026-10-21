@@ -96,6 +96,17 @@ def cmd_balance_all() -> None:
     notify(msg)
 
 
+def cmd_chat_maint() -> None:
+    """챗봇 유지보수 — 비활성 세션 자동요약(상한 4건/일) + 빈 세션 정리 + 추이검증 배지."""
+    from bot import chatstore
+    r = chatstore.maintain()
+    try:
+        chatstore.refresh_verdicts()
+    except Exception:  # noqa: BLE001
+        pass
+    log.info("챗봇 유지보수: 요약 %d건, 빈세션 정리 %d건", r["summarized"], r["purged"])
+
+
 def cmd_calib() -> None:
     """캘리브레이션 주간 리포트 — 확률 과신 감시 + 틸트 A/B 비교(디스코드 발송)."""
     from bot.calibreport import calib_report
@@ -711,6 +722,7 @@ _SCHEDULE = [
     ("accuracy", lambda: cmd_accuracy(), "mon-fri", [(16, 0)]),
     ("backtest", lambda: cmd_backtest(), "mon", [(8, 0)]),
     ("calib_report", lambda: cmd_calib(), "mon", [(8, 10)]),   # 주간 캘리브레이션(과신 감시+틸트 A/B)
+    ("chat_maint", lambda: cmd_chat_maint(), "mon-sun", [(5, 30)]),  # 챗 자동요약·빈세션 정리·배지
     ("paper", lambda: cmd_paper(), "mon-fri", [(9, 15), (12, 30), (15, 0), (23, 35)]),
     # ISA 실계좌(알림후자동 10분 지연 포함 → 15:20 장중 실행 가능하게 마지막 슬롯 14:40)
     ("isa", lambda: cmd_isa(), "mon-fri", [(9, 20), (13, 0), (14, 40)]),
@@ -800,6 +812,7 @@ COMMANDS = {
     "paper": cmd_paper,
     "isa": cmd_isa,
     "calib": cmd_calib,
+    "chat-maint": cmd_chat_maint,
     "isa-dry": lambda: cmd_isa(dry=True),
     "propose": cmd_propose,
     "screen": cmd_screen,
