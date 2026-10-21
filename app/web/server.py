@@ -960,8 +960,9 @@ def _chat_context(who: str = "me") -> str:
         if seen:
             L.append("[모델 예측(몬테카를로, 약 21일 앞 추정 — 단정 아님, '과거 추이'와 구분)]")
             for sym, pr in list(seen.items())[:20]:
-                L.append(f"  - {sym}: 상승확률 {round((pr.prob_up or 0)*100)}%, "
-                         f"기대수익 {round(pr.exp_return or 0,1)}%")
+                from bot.forecast import calibrate_prob, calibrate_exp
+                L.append(f"  - {sym}: 상승확률 {round(calibrate_prob(pr.prob_up)*100)}%, "
+                         f"기대수익 {round(calibrate_exp(pr.exp_return),1)}%")   # 표시용 수축(과신 교정)
     except Exception:  # noqa: BLE001
         pass
     try:                                       # 예측 적중률(실측 신뢰도)

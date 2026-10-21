@@ -31,6 +31,30 @@ def _shrink(mu: float, factor: float = 0.4) -> float:
     return mu * factor
 
 
+# ───── 캘리브레이션 보정(표시·판단용) ─────
+# 실측(2026-10-21, 채점 11,413건): 모델 확신이 클수록 실제는 반대(60~65% 구간 실제 상승
+# 40%, 기대+2%↑ 군 실제 -2.2%). '뒤집기'는 과적합 위험(검증 원칙: IC뒤집기 금지)이라 금지
+# → 챗봇·제안 등 표시/판단에 쓰는 확률·기대수익을 50%/0 쪽으로 수축해 과신만 제거.
+# ⚠️ Prediction DB 기록(채점 원본)은 반드시 raw 유지 — 보정하면 캘리브레이션 분석이 오염됨.
+CALIB_K = 0.25
+
+
+def calibrate_prob(p) -> float:
+    """표시/판단용 상승확률 수축: 0.5 + (p-0.5)×CALIB_K. (예: 0.73→0.56)"""
+    try:
+        return 0.5 + (float(p) - 0.5) * CALIB_K
+    except (TypeError, ValueError):
+        return 0.5
+
+
+def calibrate_exp(e) -> float:
+    """표시/판단용 기대수익(%) 수축: e×CALIB_K."""
+    try:
+        return float(e) * CALIB_K
+    except (TypeError, ValueError):
+        return 0.0
+
+
 @dataclass
 class Forecast:
     symbol: str

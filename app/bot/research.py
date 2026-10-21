@@ -642,8 +642,11 @@ def research(symbol: str, market: str, light: bool = False) -> dict:
                                  technical_tilt=_technical_tilt(closes),
                                  news_sentiment=blended_sent)
             if fc is not None:
+                from bot.forecast import calibrate_prob, calibrate_exp
                 result["forecast"] = {
-                    "prob_up": fc.prob_up, "exp_return": fc.exp_return,
+                    # 챗봇 표시/판단용 → 캘리브레이션 수축 적용(과신 제거, 실측 근거는 forecast.py 참조)
+                    "prob_up": round(calibrate_prob(fc.prob_up), 3),
+                    "exp_return": round(calibrate_exp(fc.exp_return), 2),
                     "band": fc.band, "target_touch": fc.target_touch,
                     "backtest_winrate": fc.backtest_winrate,
                     "backtest_n": fc.backtest_n,

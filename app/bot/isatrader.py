@@ -53,8 +53,10 @@ MAX_BUY_KRW = 150_000    # 매수 1회 상한(매도=방어라 무제한)
 MAX_ORDERS_DAY = 10      # 일일 주문수 상한
 NEWS_ACCEL = -0.25       # 이슈 틸트 이 값 미만 = 강한 악재 → 추세방어 가속
 EXDIV_HOLD_DAYS = 3      # 배당락 D-N 이내면 트림성 매도 보류(분배금 수령 후 실행)
-STOP_LOSS_PCT = -10.0    # 개별 종목 손절선(안정형·사용자 원칙: -10% 넘게 물리면 매도 신호.
-                         # 장기보유(lt)는 승인 요청으로 가서 '회복 대기 vs 손절'을 사용자가 결정)
+STOP_LOSS_PCT = -10.0    # 손절 폴백(밴드 계산 실패 시). 기본은 _stop_pct()의 변동성 맞춤 손절
+                         # (실측: 밴드=변동폭 추정은 작동 확정 → 평범한 출렁임엔 안 털리고
+                         #  평소 범위를 넘어선 진짜 이상신호에서만 손절. 휩쏘 왕복비용 방지)
+STOP_MIN, STOP_MAX = -8.0, -18.0   # 손절선 클램프(조용한 자산 -8%, 변동 큰 자산 최대 -18%)
 
 # 분배금 주는 ETF만(310970은 TR=분배 재투자, 금·단기채는 분배 없음 → 배당가드 불필요)
 DIV_PAYERS = {"458730": "monthly",    # TIGER 미국배당다우존스 — 월배당
@@ -301,6 +303,30 @@ def _plan_orders(kis, eff: dict[str, float]) -> tuple[list[dict], dict]:
     return orders, snap
 
 
+def _stop_pct(code: str, kis) -> float:
+    """종목별 손절선(%) — 검증된 예측 밴드(변동폭)의 반폭×1.2, STOP_MIN~MAX 클램프. 1일 캐시.
+    (금처럼 평소 ±10% 흔들리는 자산은 -12~15%, 조용한 자산은 -8% — 정상 변동에 안 털리게)"""
+    ck = f"isa:stop:{code}"
+    c = _r.get(ck)
+    if c is not None:
+        try:
+            return float(c)
+        except (TypeError, ValueError):
+            pass
+    pct = STOP_LOSS_PCT
+    try:
+        closes = [x["close"] for x in kis.get_candles(code, "1d", 200) if x["close"] > 0]
+        from bot.forecast import forecast_symbol
+        fc = forecast_symbol(code, closes, 21)
+        if fc and fc.band and closes:
+            half = abs(fc.band["p90"] - fc.band["p10"]) / closes[-1] * 100 / 2
+            pct = -min(abs(STOP_MAX), max(abs(STOP_MIN), half * 1.2))
+    except Exception:  # noqa: BLE001
+        pass
+    _r.set(ck, pct, ex=86400)
+    return pct
+
+
 def _buy_options(buys: list[dict], kis) -> tuple[list[dict], dict, str]:
     """계획된 매수를 A(규칙대로)/B(보수적)/C(보류) 옵션으로 + 종목별 '예측+그래프 위치' 주석
     + 봇 추천안(예측 종합). B = 안전자산(단기채)만, 전부 안전자산이면 절반 수량."""
@@ -309,12 +335,13 @@ def _buy_options(buys: list[dict], kis) -> tuple[list[dict], dict, str]:
         parts = []
         try:
             closes = [c["close"] for c in kis.get_candles(o["code"], "1d", 200) if c["close"] > 0]
-            from bot.forecast import forecast_symbol
+            from bot.forecast import forecast_symbol, calibrate_prob, calibrate_exp
             fc = forecast_symbol(o["code"], closes, 21)
             if fc:
-                parts.append(f"21일 상승확률 {fc.prob_up*100:.0f}%·기대 {fc.exp_return:+.1f}%")
-                probs.append(fc.prob_up)
-                fcmap[o["code"]] = (fc.prob_up, fc.exp_return)
+                cp, ce = calibrate_prob(fc.prob_up), calibrate_exp(fc.exp_return)   # 과신 수축(실측 근거)
+                parts.append(f"21일 상승확률 {cp*100:.0f}%·기대 {ce:+.1f}%")
+                probs.append(cp)
+                fcmap[o["code"]] = (cp, ce)
             if len(closes) >= 60:              # 그래프 위치(저점 정도) — 사용자 원칙 1
                 ma50 = sum(closes[-50:]) / 50
                 hi60 = max(closes[-60:])
@@ -377,16 +404,17 @@ def run_isa(dry: bool = False) -> dict:
     kis = KISBroker(account=(settings.kis_main_cano, "01"), paper=False)   # ISA 전용
     eff, info = _effective_targets(kis)
     orders, snap = _plan_orders(kis, eff)
-    # 손절 규칙(-10%, 사용자 원칙 2) — 개별 종목이 STOP_LOSS_PCT 넘게 물리면 전량매도 신호.
+    # 손절 규칙(변동성 맞춤, 사용자 원칙 2) — 종목별 손절선(_stop_pct)을 넘게 물리면 전량매도 신호.
     # 장기보유(lt)는 아래 승인가드로 흘러가 '회복 대기 vs 손절'을 사용자가 결정. 배당가드로 안 미뤄짐.
     selling = {o["code"] for o in orders if o["side"] == "sell"}
     for code, h in snap["held"].items():
-        if (code in TARGETS and code not in selling and h["qty"] > 0
-                and h["pnl"] <= STOP_LOSS_PCT and h.get("price", 0) > 0):
-            orders.insert(0, {"code": code, "name": TARGETS[code]["name"], "side": "sell",
-                              "qty": int(h["qty"]), "price": h["price"],
-                              "krw": round(h["qty"] * h["price"]),
-                              "why": f"손절 {h['pnl']:+.1f}%(기준 {STOP_LOSS_PCT:.0f}%)"})
+        if code in TARGETS and code not in selling and h["qty"] > 0 and h.get("price", 0) > 0:
+            sl = _stop_pct(code, kis)
+            if h["pnl"] <= sl:
+                orders.insert(0, {"code": code, "name": TARGETS[code]["name"], "side": "sell",
+                                  "qty": int(h["qty"]), "price": h["price"],
+                                  "krw": round(h["qty"] * h["price"]),
+                                  "why": f"손절 {h['pnl']:+.1f}%(기준 {sl:.0f}%·변동성맞춤)"})
     # 배당가드 — 분배금 ETF의 '트림성' 매도는 배당락 임박(D-3)이면 보류(분배금 받고 다음 점검 때 실행).
     # 추세이탈 피난·낙폭 방어 매도는 배당보다 우선(0.n% 분배금보다 낙폭 방어가 큼) → 즉시.
     div_hold = []
