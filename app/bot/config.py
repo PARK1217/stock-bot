@@ -61,8 +61,10 @@ class Settings(BaseSettings):
     # gpt-oss는 추론토큰이 출력을 잘라먹는 문제가 있어 반드시 reasoning_effort=low로 호출
     # (호출부에서 모델명에 'gpt-oss' 포함 시 자동 적용). 한국어 품질·속도 검증 완료(qwen3.6은 <think> 누출로 탈락).
     groq_model: str = "openai/gpt-oss-120b"
-    # 뉴스 관련성 필터는 가벼운 작업 → 8b(일일한도 5배, 이번 종료대상 아님).
-    groq_news_model: str = "llama-3.1-8b-instant"
+    # 뉴스 관련성 필터는 가벼운 작업 → 경량 gpt-oss-20b.
+    # (llama-3.1-8b-instant는 2026-10월경 Groq에서 서비스 종료(404) 확인 → 교체.
+    #  gpt-oss 계열은 호출부에서 reasoning_effort=low 자동 적용돼 출력 잘림 없음)
+    groq_news_model: str = "openai/gpt-oss-20b"
     groq_summary_model: str = "openai/gpt-oss-120b"
     groq_base_url: str = "https://api.groq.com/openai/v1"
     mistral_api_key: str = ""             # 폴백 LLM(Groq 장애 대비)

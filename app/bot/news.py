@@ -108,8 +108,57 @@ class DartProvider(NewsProvider):
         return []
 
 
+class NaverNewsProvider(NewsProvider):
+    """한국 종목 뉴스 — 네이버 검색 API(뉴스). DART 스텁을 대체(2026-10-21 KR 보강).
+    챗봇 반응검색과 같은 키(NAVER_CLIENT_ID/SECRET) 사용. 코드→종목명 변환 후 '종목명 주가' 검색.
+    근거: 빗나간 예측의 14%가 '이슈 미포착'(KR 뉴스 공백) — 이슈요약·NewsIssue·뉴스틸트에 연쇄 반영."""
+    def fetch(self, symbol: str, days: int) -> list[NewsItem]:
+        cid = getattr(settings, "naver_client_id", "") or ""
+        sec = getattr(settings, "naver_client_secret", "") or ""
+        if not cid or not sec:
+            return []
+        try:
+            from bot.research import _kr_code2name
+            name = _kr_code2name().get(symbol) or ""
+        except Exception:  # noqa: BLE001
+            name = ""
+        if not name:
+            return []                         # 이름 모르면 코드 검색은 노이즈 → 포기(미수집 처리)
+        import html as _html
+        import re as _re
+        from email.utils import parsedate_to_datetime
+        try:
+            r = httpx.get("https://openapi.naver.com/v1/search/news.json",
+                          params={"query": f"{name} 주가", "display": 20, "sort": "date"},
+                          headers={"X-Naver-Client-Id": cid, "X-Naver-Client-Secret": sec},
+                          timeout=10)
+            r.raise_for_status()
+            rows = r.json().get("items", []) or []
+        except Exception:  # noqa: BLE001
+            log.warning("네이버 뉴스 조회 실패: %s", symbol)
+            return []
+        cutoff = datetime.now().timestamp() - days * 86400
+        tag = _re.compile(r"<[^>]+>")
+
+        def _clean(s):
+            return _html.unescape(tag.sub("", s or "")).strip()
+
+        out = []
+        for it in rows:
+            try:
+                ts = parsedate_to_datetime(it.get("pubDate", "")).timestamp()
+                if ts < cutoff:
+                    continue
+            except Exception:  # noqa: BLE001
+                ts = 0
+            out.append(NewsItem(headline=_clean(it.get("title")),
+                                summary=_clean(it.get("description"))[:200],
+                                source="네이버뉴스", ts=str(int(ts))))
+        return out[:20]
+
+
 def _provider(market: str) -> NewsProvider:
-    return DartProvider() if market == "KR" else FinnhubProvider()
+    return NaverNewsProvider() if market == "KR" else FinnhubProvider()
 
 
 # ---------------- 점수화 ----------------
@@ -119,12 +168,19 @@ _NEG = ["miss", "plunge", "cut", "downgrade", "lawsuit", "probe", "warning",
         "decline", "weak", "halt", "recall", "restriction", "ban", "default"]
 
 
+# 한글 키워드(KR 폴백용 — FinBERT는 영어 전용이라 KR엔 Groq 채점+이 폴백 사용)
+_POS_KR = ["상승", "급등", "호재", "수주", "흑자", "최대", "돌파", "개선", "성장",
+           "상향", "신고가", "호실적", "배당 확대", "자사주"]
+_NEG_KR = ["하락", "급락", "악재", "적자", "소송", "하향", "우려", "부진", "손실",
+           "리콜", "규제", "신저가", "쇼크", "구조조정"]
+
+
 def _keyword_score(items: list[NewsItem]) -> tuple[float, float, str]:
     text = " ".join((i.headline + " " + i.summary).lower() for i in items)
     if not text.strip():
         return 0.0, 0.0, "뉴스 없음(중립)"
-    pos = sum(text.count(w) for w in _POS)
-    neg = sum(text.count(w) for w in _NEG)
+    pos = sum(text.count(w) for w in _POS) + sum(text.count(w) for w in _POS_KR)
+    neg = sum(text.count(w) for w in _NEG) + sum(text.count(w) for w in _NEG_KR)
     if pos + neg == 0:
         return 0.0, 0.2, "중립 키워드"
     score = (pos - neg) / (pos + neg)
@@ -218,18 +274,28 @@ def _compute_sentiment(symbol: str, market: str = "US",
     relevant = ([items[i] for i in idx if 0 <= i < len(items)]
                 if idx is not None else items)
 
-    # 2) 감성 점수(FinBERT) — 실패 시 키워드 폴백
-    fb = finbert_scores([i.headline for i in relevant])
-    if fb:
-        signed = [s for _, s in fb]
-        score = sum(signed) / len(signed)
-        # 신뢰도: 기사 수 + 방향 일치도
-        agree = sum(1 for s in signed if (s > 0) == (score > 0)) / len(signed)
-        conf = min(1.0, len(signed) / 8) * agree
-        engine = "FinBERT" + ("+Groq필터" if idx else "")
+    # 2) 감성 점수 — US=FinBERT(영어 전용), KR=Groq 채점(한국어)→한글 키워드 폴백
+    if market == "KR":
+        from bot.sentiment import groq_sent_score
+        gs = groq_sent_score(symbol, [i.headline for i in relevant])
+        if gs:
+            score, conf = gs
+            engine = "Groq-KR"
+        else:
+            score, conf, kw = _keyword_score(relevant)
+            engine = "키워드KR(폴백)"
     else:
-        score, conf, kw = _keyword_score(relevant)
-        engine = "키워드(폴백)"
+        fb = finbert_scores([i.headline for i in relevant])
+        if fb:
+            signed = [s for _, s in fb]
+            score = sum(signed) / len(signed)
+            # 신뢰도: 기사 수 + 방향 일치도
+            agree = sum(1 for s in signed if (s > 0) == (score > 0)) / len(signed)
+            conf = min(1.0, len(signed) / 8) * agree
+            engine = "FinBERT" + ("+Groq필터" if idx else "")
+        else:
+            score, conf, kw = _keyword_score(relevant)
+            engine = "키워드(폴백)"
 
     # 주목할 이슈 있을 때만 요약(없으면 빈값→화면서 숨김). 밋밋한 메타 폴백 제거.
     # ETF 구성종목(need_summary=False)은 점수만 쓰므로 요약 LLM 생략 → ETF 룩스루 대폭 단축.

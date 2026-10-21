@@ -190,6 +190,27 @@ def groq_relevant_indices(symbol: str, headlines: list[str]) -> list[int] | None
         return None
 
 
+def groq_sent_score(symbol: str, headlines: list[str]) -> tuple[float, float] | None:
+    """한국어 헤드라인 감성 채점(KR 전용, 2026-10-21 KR 뉴스 보강) — FinBERT가 영어 전용이라
+    KR은 Groq(한국어 OK)로 score/confidence JSON 채점. 실패 시 None(한글 키워드 폴백)."""
+    if not (settings.groq_api_key or settings.mistral_api_key) or not headlines:
+        return None
+    heads = "\n".join(f"- {h}" for h in headlines[:15])
+    prompt = (f"다음은 한국 종목 '{symbol}'의 최근 뉴스 헤드라인이다. 주가 관점의 종합 감성을 "
+              'JSON으로만 답하라: {"score": -1~1 실수, "confidence": 0~1 실수}. 다른 말 금지.\n'
+              f"{heads}")
+    txt = _llm_chat(prompt, 60, model=settings.groq_summary_model)
+    if not txt:
+        return None
+    try:
+        d = json.loads(txt[txt.find("{"):txt.rfind("}") + 1])
+        score = max(-1.0, min(1.0, float(d["score"])))
+        conf = max(0.0, min(1.0, float(d.get("confidence", 0.5))))
+        return score, conf
+    except (ValueError, KeyError, json.JSONDecodeError):
+        return None
+
+
 # 한자 누출 대비 후처리(드물게 LLM이 섞어 내보냄). 금융뉴스 맥락서 안전한 것만.
 _HANJA = {"美": "미국", "中": "중국", "日": "일본", "韓": "한국", "獨": "독일", "英": "영국",
           "佛": "프랑스", "株": "주식", "增": "증가", "減": "감소", "黑字": "흑자", "赤字": "적자"}
