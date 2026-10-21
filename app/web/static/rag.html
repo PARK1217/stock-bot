@@ -81,27 +81,30 @@
   <a class="back" href="/">← 대시보드</a>
 </header>
 <div class="tabs">
-  <button class="tab on" data-t="verify" onclick="showTab('verify')">📊 예측 검증</button>
-  <button class="tab" data-t="done" onclick="showTab('done')">✅ 검증 완료</button>
-  <button class="tab" data-t="open" onclick="showTab('open')">⏳ 진행 중</button>
+  <button class="tab on" data-t="verify" onclick="showTab('verify')">📊 예측 성적표(통계)</button>
+  <button class="tab" data-t="done" onclick="showTab('done')">✅ 채점 내역(예측↔실제)</button>
+  <button class="tab" data-t="open" onclick="showTab('open')">⏳ 채점 대기(만기 전)</button>
   <button class="tab" data-t="chat" onclick="showTab('chat')">💬 챗봇 정확도</button>
   <button class="tab" data-t="issues" onclick="showTab('issues')">📰 이슈 히스토리</button>
 </div>
 <div class="wrap">
   <div class="card" data-tab="verify">
-    <h2>📊 예측 검증 (7·14·21일) <span class="sub" id="vf-st">로딩…</span></h2>
-    <div class="help-box">매일 <b>7·14·21영업일 뒤</b> 가격을 예측하고, 해당 영업일이 지나면 <b>실제로 맞았는지 스스로 채점</b>합니다.
-      단기(7일)부터 빨리 검증돼요. <b>방향</b>·<b>범위</b> 적중률로 이 예측을 얼마나 믿을지 가늠해요.
-      <br>· <b>상승확률</b> = 오를 가능성(이번 베팅) · <b>신뢰도</b> = 이런 예측이 <b>과거에 맞은 비율</b>(=정답일 확률).</div>
+    <h2>📊 예측 성적표 — 통계 <span class="sub" id="vf-st">로딩…</span></h2>
+    <div class="help-box"><b class="k">이 탭의 목적: "이 봇의 예측을 얼마나 믿어도 되나"를 숫자 하나로.</b><br>
+      파이프라인: 매일 예측 생성 → <b>⏳ 만기 대기</b>(7·14·21영업일) → 만기 도달 시 <b>실제 가격과 비교·채점</b>
+      → 건별 기록은 <b>✅ 채점 내역</b> 탭에, 그 <b>누적 통계가 바로 이 화면</b>입니다.
+      <br>· <b>방향 적중률</b> = 오른다/내린다 베팅이 맞은 비율(50%대면 동전던지기 수준 → 예측은 참고만)
+      · <b>범위 적중률</b> = 실제 가격이 예측 밴드(P10~P90) 안에 들어온 비율(높으면 변동폭 추정은 쓸만).</div>
     <div class="big" id="vf-sum"></div>
     <div id="vf-bysym"></div>
   </div>
 
   <div class="card" data-tab="done" style="display:none">
-    <h2>✅ 검증 완료 <span class="sub" id="vf-evc"></span></h2>
-    <div class="help-box">만기(7·14·21영업일)가 지난 예측을 <b>실제 가격으로 채점</b>한 결과예요.
-      <b>방향</b>=오른다/내린다 베팅이 맞았나 · <b>범위</b>=실제가가 예측밴드(P10~P90) 안이었나.
-      빗나간 건은 💡추정 이유를 함께 적어요.</div>
+    <h2>✅ 채점 내역 — 예측 vs 실제 <span class="sub" id="vf-evc"></span></h2>
+    <div class="help-box"><b class="k">이 탭의 목적: 📊 통계의 근거(영수증) — 과거 예측 하나하나를 실제 결과와 대조.</b><br>
+      만기가 지난 예측마다 "그때 뭐라고 예측했나 → 실제론 어떻게 됐나"를 기록합니다.
+      <b>방향</b>=오른다/내린다 베팅 일치 · <b>범위</b>=실제가가 예측밴드(P10~P90) 안 · 빗나감엔 💡추정 이유.
+      여기 건들이 쌓여 📊 성적표의 적중률이 됩니다.</div>
     <div style="display:flex;gap:6px;padding:8px 14px 2px;flex-wrap:wrap;align-items:center">
       <button class="htab on" data-eh="all" onclick="evHz('all')">전체기간</button>
       <button class="htab" data-eh="7" onclick="evHz('7')">7일</button>
@@ -119,7 +122,9 @@
   </div>
 
   <div class="card" data-tab="open" style="display:none">
-    <h2>⏳ 진행 중 <span class="sub" id="vf-opc"></span></h2>
+    <h2>⏳ 채점 대기 — 만기 전 예측 <span class="sub" id="vf-opc"></span></h2>
+    <div class="help-box"><b class="k">이 탭의 목적: 지금 걸려 있는 예측들 — 아직 결과를 모르는 "진행 중인 베팅".</b><br>
+      만기(7·14·21영업일)가 되면 자동으로 실제 가격과 비교·채점되어 ✅ 채점 내역으로 넘어갑니다.</div>
     <div style="display:flex;gap:6px;padding:10px 14px 4px">
       <button class="mtab on" data-m="us" onclick="opTab('us')">🇺🇸 미국장</button>
       <button class="mtab" data-m="kr" onclick="opTab('kr')">🇰🇷 한국장</button>
