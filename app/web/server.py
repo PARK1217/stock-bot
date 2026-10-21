@@ -558,9 +558,14 @@ def proposals(limit: int = 50):
 
 
 @app.get("/api/predictions")
-def predictions(limit: int = 600):
+def predictions(limit: int = 600, status: str = ""):
+    """status=open|evaluated 필터 지원 — 최신 N건만 자르면 채점완료(옛 id)가 전부
+    잘려나가 '채점 내역'이 비어 보이는 문제 방지(예측 ~100건/일 생성, 만기 7~21영업일)."""
     with SessionLocal() as s:
-        rows = s.query(Prediction).order_by(Prediction.id.desc()).limit(limit).all()
+        q = s.query(Prediction)
+        if status in ("open", "evaluated"):
+            q = q.filter(Prediction.status == status)
+        rows = q.order_by(Prediction.id.desc()).limit(limit).all()
         return [{
             "id": p.id, "made_at": str(p.made_at), "symbol": p.symbol,
             "horizon_days": p.horizon_days, "base_price": p.base_price,

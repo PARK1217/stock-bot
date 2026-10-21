@@ -183,10 +183,15 @@ function showTab(t){
   window.scrollTo(0,0);
 }
 async function loadVerify(){
-  const [d,a]=await Promise.all([j('/api/predictions'),j('/api/accuracy')]);
-  if(!d){$('vf-st').textContent='실패';return;}
-  const ev=d.filter(p=>p.status==='evaluated'), op=d.filter(p=>p.status==='open');
-  $('vf-st').textContent=`총 ${d.length}건`;
+  // 상태별 분리 조회 — 최신 600건만 보면 채점완료(만기 7~21영업일 지난 옛 건)가 다 잘려서
+  // '채점 내역'이 비어 보였음. open은 최신 600, evaluated는 최신 400을 따로 가져온다.
+  let [op,ev,a]=await Promise.all([
+    j('/api/predictions?status=open&limit=600'),
+    j('/api/predictions?status=evaluated&limit=400'),
+    j('/api/accuracy')]);
+  if(!op&&!ev){$('vf-st').textContent='실패';return;}
+  op=op||[]; ev=ev||[];
+  $('vf-st').textContent=`채점 ${(a&&a.evaluated)||ev.length}건 · 대기 ${op.length}건`;
   if(a&&a.evaluated){
     $('vf-sum').innerHTML=`<div><div class="k">방향 적중률</div><div class="val ${a.dir_acc>=0.5?'up':'down'}">${Math.round(a.dir_acc*100)}%</div></div>`
      +`<div><div class="k">범위 적중률</div><div class="val">${Math.round(a.band_acc*100)}%</div></div>`
