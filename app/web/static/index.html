@@ -263,6 +263,7 @@
       <b class="k">🛒매수는 전부 선택제</b> — 봇이 A/B/C안+예측을 제시하고 고른 안만 실행(무응답=보류).
       자동 실행은 <b class="k">금·단기채 방어 매도뿐</b>(10분 전 예고, 취소 가능).</div>
     <div id="isa-auto"><div class="empty">불러오는 중…</div></div>
+    <div id="isa-perf"></div>
   </div>
 
   <div class="card span2" data-tab="real" data-me="1">
@@ -1294,6 +1295,31 @@ async function approveIsa(code,ok){
   const p=document.getElementById('notifPanel');
   if(p&&p.style.display!=='none')renderNotifs();   // 알림 팝업에서 눌렀으면 팝업도 갱신
 }
+async function loadIsaPerf(){
+  const box=document.getElementById('isa-perf'); if(!box)return;
+  const d=await j('/api/isa/perf');
+  if(!d||!d.started){box.innerHTML='';return;}
+  const win=d.excess_pp>=0;
+  // 미니 듀얼라인 차트(실제=파랑, 벤치=회색 점선) — 같은 시작값에서 출발
+  const W=640,H=90,P=6;
+  const all=[...d.actual,...d.bench], mn=Math.min(...all), mx=Math.max(...all), rg=(mx-mn)||1;
+  const xy=(arr)=>arr.map((v,i)=>`${P+i*(W-2*P)/(arr.length-1)},${H-P-(v-mn)*(H-2*P)/rg}`).join(' ');
+  box.innerHTML=`<div class="grp"><span>📈 성과추적 — 자동매매 vs 그냥 들고있기</span>
+      <span class="mut" style="font-weight:400;font-size:11px">${d.start} 시작 · ${d.days}일</span></div>
+    <div style="padding:10px 14px">
+      <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;margin-bottom:7px">
+        <span>🤖 자동매매 <b class="${cls(d.actual_ret)}">${pct(d.actual_ret)}</b> <span class="mut">(MDD ${d.actual_mdd}%)</span></span>
+        <span>📦 들고있기(S&P) <b class="${cls(d.bench_ret)}">${pct(d.bench_ret)}</b> <span class="mut">(MDD ${d.bench_mdd}%)</span></span>
+        <span>차이 <b class="${win?'up':'down'}">${d.excess_pp>=0?'+':''}${d.excess_pp}%p</b> ${win?'🟢 규칙이 앞섬':'🔴 벤치마크가 앞섬'}</span>
+      </div>
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:76px;display:block">
+        <polyline points="${xy(d.bench)}" fill="none" stroke="#5c6675" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <polyline points="${xy(d.actual)}" fill="none" stroke="#4c8dff" stroke-width="2"/>
+      </svg>
+      <div class="mut" style="font-size:10.5px;margin-top:3px">— 파랑=자동매매(ISA 실제) · 점선=같은 돈을 S&P500에 그대로 뒀다면 · 둘 다 같은 시작값 기준.
+        3~6개월 성과로 연금·토스 확대 여부를 결정해요.</div>
+    </div>`;
+}
 async function pickBuy(opt){
   if(!confirm(opt==='C'?'오늘 매수를 보류할까요? (현금 유지)':opt+'안으로 매수할까요?\n다음 점검(9:20/13:00/14:40) 때 실행됩니다.'))return;
   await fetch('/api/isa/buypick',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1353,7 +1379,7 @@ function loadAll(){
   loadNames();loadRealized();
   loadPortfolio();loadProposals();loadPred();loadScreen();loadScreenKr();loadBT();
   loadCash();loadOrders();
-  if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(0);loadExpo();loadIsaAuto();}  // 남편=토스만
+  if(WHO!=='spouse'){loadKis();loadKisOrders();loadAssets();loadPaper();loadTrades(0);loadExpo();loadIsaAuto();loadIsaPerf();}  // 남편=토스만
   else{KIST={total:0,rate:null};updateHeader();}
 }
 loadAll(); updateSessions(); loadMkt();

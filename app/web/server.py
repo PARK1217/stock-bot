@@ -1254,6 +1254,85 @@ def notifications(limit: int = 50):
 
 
 # ---------------- ISA 자동매매(실계좌) 컨트롤 ----------------
+def _naver_daily_closes(sym: str, start: str, end: str) -> dict:
+    """네이버 금융 일봉 종가 {YYYY-MM-DD: close}. 6h 캐시 — ISA 벤치마크용(KIS 캔들 100개 한계 회피)."""
+    ck = f"web:ndaily:{sym}:{start}:{end}"
+    if (c := _cache_get(ck)) is not None:
+        return c
+    out = {}
+    try:
+        import httpx as _hx
+        url = (f"https://api.finance.naver.com/siseJson.naver?symbol={sym}&requestType=1"
+               f"&startTime={start.replace('-','')}&endTime={end.replace('-','')}&timeframe=day")
+        rows = json.loads(_hx.get(url, timeout=12,
+                                  headers={"User-Agent": "Mozilla/5.0"}).text.replace("'", '"'))
+        for r in rows[1:]:
+            try:
+                d = str(r[0]).strip()
+                out[f"{d[:4]}-{d[4:6]}-{d[6:8]}"] = float(r[4])
+            except (ValueError, IndexError, TypeError):
+                pass
+    except Exception:  # noqa: BLE001
+        pass
+    _cache_set(ck, out, 6 * 3600)
+    return out
+
+
+@app.get("/api/isa/perf")
+def isa_perf():
+    """ISA 자동매매 성과추적 — 실제(일일 스냅샷) vs 바이앤홀드 벤치마크
+    (자동매매 시작 시점 금액을 S&P500(360200)에 그대로 뒀다면). 둘 다 같은 시작값에서 출발."""
+    if (c := _cache_get("web:isaperf")) is not None:
+        return c
+    from bot.storage.models import AssetSnapshot
+    out = {"started": False}
+    with SessionLocal() as s:
+        first = (s.query(OrderLog).filter(OrderLog.broker == "kis-isa", OrderLog.ok.is_(True))
+                 .order_by(OrderLog.id.asc()).first())
+        if not first:
+            _cache_set("web:isaperf", out, 3600)
+            return out
+        snaps = (s.query(AssetSnapshot).filter(AssetSnapshot.ts >= first.ts)
+                 .order_by(AssetSnapshot.ts.asc()).all())
+    pts = {}
+    for r in snaps:                                   # 하루 여러 스냅샷이면 마지막 값
+        if r.isa_krw:
+            pts[str(r.ts)[:10]] = round(r.isa_krw)
+    dates = sorted(pts)
+    if len(dates) < 2:
+        _cache_set("web:isaperf", out, 3600)
+        return out
+    closes = _naver_daily_closes("360200", dates[0], dates[-1])
+    base_v = pts[dates[0]]
+    base_c = None
+    actual, bench, bdates = [], [], []
+    last_c = None
+    for d in dates:
+        c = closes.get(d) or last_c                   # 휴장일 등은 직전 종가 유지
+        if c is None:
+            continue
+        last_c = c
+        if base_c is None:
+            base_c = c
+        bdates.append(d)
+        actual.append(pts[d])
+        bench.append(round(base_v * c / base_c))
+
+    def _mdd(vs):
+        peak, m = vs[0], 0.0
+        for v in vs:
+            peak = max(peak, v)
+            m = min(m, v / peak - 1)
+        return round(m * 100, 2)
+
+    out = {"started": True, "start": dates[0], "days": len(bdates),
+           "dates": bdates, "actual": actual, "bench": bench,
+           "actual_ret": round((actual[-1] / actual[0] - 1) * 100, 2),
+           "bench_ret": round((bench[-1] / bench[0] - 1) * 100, 2),
+           "actual_mdd": _mdd(actual), "bench_mdd": _mdd(bench)}
+    out["excess_pp"] = round(out["actual_ret"] - out["bench_ret"], 2)
+    _cache_set("web:isaperf", out, 3600)
+    return out
 @app.get("/api/isa/status")
 def isa_status():
     """ISA 자동매매 상태 — 킬스위치·최근 신호/실행·대기주문(취소용)."""
