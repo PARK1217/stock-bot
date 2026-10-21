@@ -99,6 +99,22 @@
 
   <div class="card" data-tab="done" style="display:none">
     <h2>✅ 검증 완료 <span class="sub" id="vf-evc"></span></h2>
+    <div class="help-box">만기(7·14·21영업일)가 지난 예측을 <b>실제 가격으로 채점</b>한 결과예요.
+      <b>방향</b>=오른다/내린다 베팅이 맞았나 · <b>범위</b>=실제가가 예측밴드(P10~P90) 안이었나.
+      빗나간 건은 💡추정 이유를 함께 적어요.</div>
+    <div style="display:flex;gap:6px;padding:8px 14px 2px;flex-wrap:wrap;align-items:center">
+      <button class="htab on" data-eh="all" onclick="evHz('all')">전체기간</button>
+      <button class="htab" data-eh="7" onclick="evHz('7')">7일</button>
+      <button class="htab" data-eh="14" onclick="evHz('14')">14일</button>
+      <button class="htab" data-eh="21" onclick="evHz('21')">21일</button>
+      <span style="width:6px"></span>
+      <button class="schip on" data-er="all" onclick="evRes('all')">전체</button>
+      <button class="schip" data-er="hit" onclick="evRes('hit')">✅ 적중만</button>
+      <button class="schip" data-er="miss" onclick="evRes('miss')">❌ 빗나감만</button>
+      <select id="ev-sym" onchange="renderEv()" style="background:#11141a;border:1px solid var(--line);
+        color:var(--fg);border-radius:7px;padding:4px 8px;font-size:11.5px">
+        <option value="all">모든 종목</option></select>
+    </div>
     <div id="vf-ev"><div class="empty">로딩…</div></div>
   </div>
 
@@ -183,17 +199,46 @@ async function loadVerify(){
       return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${s}</span>${nm(s)}</div></div>
         <div class="row-r"><span class="bar"><i style="width:${Math.round(acc*100)}%;background:${c}"></i></span>
           <span class="v num" style="margin-left:8px;color:${c}">${Math.round(acc*100)}%</span><div class="v2 mut">${r.hit}/${r.n} 적중</div></div></div>`;}).join('')):'');
-  $('vf-evc').textContent=ev.length+'건';
-  $('vf-ev').innerHTML=ev.length?ev.slice(0,120).map(p=>{const up=p.prob_up>=0.5;
-    return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)} <span class="tag">${p.horizon_days}일</span>
-        ${p.dir_hit?'<span class="tag hit">적중</span>':'<span class="tag miss">빗나감</span>'}${p.band_hit?'<span class="tag al">범위적중</span>':''}</div>
-      <div class="row-s num">${(p.made_at||'').slice(0,10)} · 예측 <b>${up?'▲상승':'▼하락'}</b>(상승확률 ${Math.round(p.prob_up*100)}% · 신뢰도 ${p.winrate!=null?`${Math.round(p.winrate*100)}%`:'—(표본부족)'}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div>
-      ${(!p.dir_hit&&p.miss_reason)?`<div class="row-s" style="white-space:normal;line-height:1.45;color:#c9a86a">💡 ${esc(p.miss_reason)}</div>`:''}</div></div>`;}).join('')
-    :'<div class="empty">아직 채점된 예측이 없어요 (7·14·21영업일 지나면 단기부터 채점)</div>';
+  EVDATA=ev;                                             // 검증완료 탭: 필터·날짜그룹 렌더
+  const sel=$('ev-sym');
+  if(sel){const cur=sel.value;
+    sel.innerHTML='<option value="all">모든 종목</option>'
+      +[...new Set(ev.map(p=>p.symbol))].sort().map(s=>`<option value="${s}">${s}</option>`).join('');
+    if([...sel.options].some(o=>o.value===cur))sel.value=cur;}
+  renderEv();
   $('vf-opc').textContent=op.length+'건';
   const isKR=s=>/^\d/.test(s||'');                       // 숫자코드=국내
   OPDATA={us:op.filter(p=>!isKR(p.symbol)), kr:op.filter(p=>isKR(p.symbol))};
   renderOp();
+}
+// ---------- ✅ 검증 완료: 기간/결과/종목 필터 + 예측일별 그룹 ----------
+let EVDATA=[], EVHZ='all', EVRES='all';
+function evHz(h){EVHZ=h;document.querySelectorAll('[data-eh]').forEach(b=>b.classList.toggle('on',b.dataset.eh===h));renderEv();}
+function evRes(r){EVRES=r;document.querySelectorAll('[data-er]').forEach(b=>b.classList.toggle('on',b.dataset.er===r));renderEv();}
+function renderEv(){
+  const box=$('vf-ev'); if(!box)return;
+  const sel=$('ev-sym'); const sym=sel?sel.value:'all';
+  let rows=EVDATA.slice();
+  if(EVHZ!=='all')rows=rows.filter(p=>String(p.horizon_days)===EVHZ);
+  if(EVRES==='hit')rows=rows.filter(p=>p.dir_hit);
+  if(EVRES==='miss')rows=rows.filter(p=>!p.dir_hit);
+  if(sym!=='all')rows=rows.filter(p=>p.symbol===sym);
+  const n=rows.length, hit=rows.filter(p=>p.dir_hit).length;
+  $('vf-evc').textContent=n?`${n}건 · 방향적중 ${Math.round(hit/n*100)}%`:(EVDATA.length?'조건 일치 0건':'0건');
+  rows=rows.slice(0,200);
+  const byd={};
+  rows.forEach(p=>{const d=(p.made_at||'').slice(0,10);(byd[d]=byd[d]||[]).push(p);});
+  const days=Object.keys(byd).sort().reverse();
+  box.innerHTML=n?days.map(d=>{
+    const g=byd[d], gh=g.filter(p=>p.dir_hit).length;
+    return `<div class="grp"><span>📅 ${d} 예측</span><span class="mut" style="font-weight:400;font-size:11px">${gh}/${g.length} 적중</span></div>`
+      +g.map(p=>{const up=p.prob_up>=0.5;
+        return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${p.symbol}</span>${nm(p.symbol)} <span class="tag">${p.horizon_days}일</span>
+            ${p.dir_hit?'<span class="tag hit">적중</span>':'<span class="tag miss">빗나감</span>'}${p.band_hit?'<span class="tag al">범위적중</span>':''}</div>
+          <div class="row-s num">예측 <b>${up?'▲상승':'▼하락'}</b>(상승확률 ${Math.round(p.prob_up*100)}% · 신뢰도 ${p.winrate!=null?`${Math.round(p.winrate*100)}%`:'—'}) → 실제 <span class="${cls(p.actual_return)}">${pct(p.actual_return)}</span></div>
+          ${(!p.dir_hit&&p.miss_reason)?`<div class="row-s" style="white-space:normal;line-height:1.45;color:#c9a86a">💡 ${esc(p.miss_reason)}</div>`:''}</div></div>`;}).join('');
+  }).join('')
+    :'<div class="empty">'+(EVDATA.length?'조건에 맞는 채점 결과가 없어요 — 필터를 풀어보세요':'아직 채점된 예측이 없어요 (7·14·21영업일 지나면 단기부터 채점)')+'</div>';
 }
 let OPDATA={us:[],kr:[]}, OPMKT='us', OPSORT=['expval'], OPHZ='all', OPDATE='';
 function opDatesList(){                                  // 현재 시장의 예측 날짜(최신순)
