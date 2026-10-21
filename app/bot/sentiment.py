@@ -126,6 +126,23 @@ def finbert_scores(texts: list[str]) -> list[tuple[str, float]] | None:
     return [_parse_finbert(s) for s in out]
 
 
+def alert_model_error(model: str, status: int) -> None:
+    """LLM 영구오류(특히 404=모델 서비스 종료 가능성) 디스코드 경보 — 모델당 하루 1회.
+    (llama-3.3-70b·llama-3.1-8b가 조용히 종료돼 로그에만 남았던 일 재발 방지, 2026-10-21)"""
+    try:
+        import redis as _rd
+        r = _rd.from_url(settings.redis_url)
+        k = f"llm:dead:{model}:{status}"
+        if r.get(k):
+            return
+        r.set(k, "1", ex=86400)
+        from bot.notify import notify
+        what = "서비스 종료 가능성 — 모델 교체 필요" if status == 404 else "키/권한 확인 필요"
+        notify(f"⚠️ [LLM] '{model}' 영구오류 {status} — {what} (폴백으로 동작 중)")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # ---------------- Groq (관련성·요약) ----------------
 def _openai_chat(base_url: str, key: str, model: str,
                  prompt: str, max_tokens: int, *, retry_rl: bool = True) -> str | None:
@@ -150,6 +167,7 @@ def _openai_chat(base_url: str, key: str, model: str,
                 continue
             if r.status_code in (401, 403, 404, 400):     # 영구 오류 → 재시도 무의미
                 log.warning("LLM %s 영구오류 %s, 폴백", model, r.status_code)
+                alert_model_error(model, r.status_code)
                 return None
             r.raise_for_status()
             return r.json()["choices"][0]["message"]["content"]

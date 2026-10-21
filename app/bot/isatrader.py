@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from datetime import datetime
 
@@ -562,7 +563,18 @@ def run_isa(dry: bool = False) -> dict:
     with SessionLocal() as session:
         for o in orders:
             side = Side.SELL if o["side"] == "sell" else Side.BUY
-            res = kis.place_order(o["code"], side, o["qty"])   # 국내 시장가(대형 ETF)
+            # 마케터블 지정가(±0.3%) — 시장가 슬리피지·순간 장애호가 체결 방지.
+            # ETF 호가단위 5원: 매수는 올림·매도는 내림으로 체결 가능성 유지. 시세 실패 시 플랜가.
+            live = o["price"]
+            try:
+                live = kis.get_price(o["code"]) or o["price"]
+            except Exception:  # noqa: BLE001
+                pass
+            if side == Side.BUY:
+                lim = math.ceil(live * 1.003 / 5) * 5
+            else:
+                lim = math.floor(live * 0.997 / 5) * 5
+            res = kis.place_order(o["code"], side, o["qty"], price=lim)
             time.sleep(0.4)
             _r.incr(dkey); _r.expire(dkey, 86400)
             mark = "✅" if res.ok else "❌"

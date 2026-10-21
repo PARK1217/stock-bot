@@ -122,6 +122,11 @@ def llm_call(prompt: str, max_tokens: int = 900) -> dict:
                 if r.status_code in (429, 500, 502, 503, 504):
                     time.sleep(0.6 * (attempt + 1)); continue
                 if r.status_code in (401, 403, 404, 400):
+                    try:
+                        from bot.sentiment import alert_model_error
+                        alert_model_error(model, r.status_code)   # 모델 종료(404) 등 하루 1회 경보
+                    except Exception:  # noqa: BLE001
+                        pass
                     break
                 r.raise_for_status()
                 j = r.json()

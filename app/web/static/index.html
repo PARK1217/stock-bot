@@ -255,7 +255,11 @@
 
   <div class="card span2" data-tab="real" data-me="1">
     <h2>🤖 ISA 자동매매 <span class="sub" id="isa-st"></span>
-      <button id="isa-tgl" class="help-btn" style="float:right" onclick="toggleIsaAuto()">…</button></h2>
+      <span style="float:right;display:flex;gap:6px">
+        <button class="help-btn" title="ISA에 입금/출금한 직후 누르세요 — 낙폭가드 고점을 현재 금액으로 리셋"
+          onclick="resetIsaPeak()">🔄 고점리셋</button>
+        <button id="isa-tgl" class="help-btn" onclick="toggleIsaAuto()">…</button>
+      </span></h2>
     <div class="help-box">B 균형형 5종(미국S&P·미국배당·한국·금H·단기채) 고정배분 —
       <b class="k">밴드 ±25% 리밸런싱 · MA50 추세방어 · 낙폭 -10% 가드 · 💰배당가드</b>
       (배당락 임박 D-3이면 트림 매도를 보류해 분배금 수령 — 방어 매도는 배당보다 우선).
@@ -1285,6 +1289,11 @@ async function toggleIsaAuto(){
 }
 async function cancelIsa(){
   await fetch('/api/isa/cancel',{method:'POST'});
+  loadIsaAuto();
+}
+async function resetIsaPeak(){
+  if(!confirm('낙폭가드 고점을 리셋할까요?\nISA에 입금/출금한 직후에만 사용하세요 — 다음 점검 때 현재 금액이 새 고점이 됩니다.'))return;
+  await fetch('/api/isa/peak-reset',{method:'POST'});
   loadIsaAuto();
 }
 async function approveIsa(code,ok){
