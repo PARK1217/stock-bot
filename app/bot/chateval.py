@@ -173,11 +173,42 @@ def _all(key) -> list[dict]:
         return []
 
 
+def _call_miss_reason(symbol: str, made_iso: str, actual_ret: float) -> str:
+    """빗나간 챗봇 콜의 이유 추정 — 예측검증(main._miss_reason)과 동일 철학:
+    기간 중 실제 움직임을 설명하는 강한 극성 이슈 → 급등락 → 노이즈 → 모델 한계 순."""
+    try:
+        from bot.storage.db import SessionLocal
+        from bot.storage.models import NewsIssue
+        made = datetime.fromisoformat(made_iso)
+        want = "긍정" if actual_ret > 0 else "부정"
+        with SessionLocal() as s:
+            rows = (s.query(NewsIssue)
+                    .filter(NewsIssue.symbol == symbol, NewsIssue.ts >= made).all())
+        strong = [r for r in rows if r.polarity == want and abs(r.score or 0) >= 0.15
+                  and r.summary and "룩스루" not in r.summary]
+        if strong:
+            r0 = max(strong, key=lambda r: abs(r.score or 0))
+            head = (r0.summary or "").strip().lstrip("- ").split("\n")[0][:70]
+            return f"기간 중 {want} 이슈({r0.date}): {head}"
+    except Exception:  # noqa: BLE001
+        pass
+    if abs(actual_ret) >= 10:
+        return f"단기 급{'등' if actual_ret > 0 else '락'}({actual_ret:+.0f}%) — 뚜렷한 이슈 미포착"
+    if abs(actual_ret) < 2:
+        return "실제 변동이 작아 방향만 살짝 빗나감(노이즈 수준)"
+    return "특이 이슈 없이 빗나감(모델 한계)"
+
+
 def score_due() -> None:
-    """만기(horizon×1.5) 지난 콜을 실제 가격으로 채점."""
+    """만기(horizon×1.5) 지난 콜을 실제 가격으로 채점. 빗나간 콜엔 💡이유 추정."""
     calls = _all(_CALLS)
     changed = False
     for c in calls:
+        # 과거에 채점만 되고 이유가 없는 빗나간 콜 → 이유 백필(1회성)
+        if (c.get("status") == "evaluated" and not c.get("hit")
+                and not c.get("miss_reason") and c.get("actual_return") is not None):
+            c["miss_reason"] = _call_miss_reason(c["symbol"], c["ts"], c["actual_return"])
+            changed = True
         if c.get("status") != "open":
             continue
         try:
@@ -192,6 +223,8 @@ def score_due() -> None:
         ret = (price / c["base_price"] - 1) * 100
         c["actual_return"] = round(ret, 2)
         c["hit"] = (ret > 0) == (c["direction"] == "up")
+        if not c["hit"]:
+            c["miss_reason"] = _call_miss_reason(c["symbol"], c["ts"], ret)
         c["status"] = "evaluated"
         changed = True
     if changed:                              # 리스트 통째로 재기록(최신앞 순서 유지)

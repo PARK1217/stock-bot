@@ -451,9 +451,11 @@ CHATEVAL = {
         {"ts": "2026-07-03 22:02", "symbol": "AVGO", "direction": "down", "base_price": 178.4, "horizon": 21, "status": "open", "q": "브로드컴 손절해야 하나?"},
         {"ts": "2026-06-12 21:40", "symbol": "VYM", "direction": "up", "base_price": 123.7, "horizon": 21, "status": "evaluated", "actual_return": 4.7, "hit": True},
         {"ts": "2026-06-10 20:55", "symbol": "SCHG", "direction": "up", "base_price": 24.2, "horizon": 21, "status": "evaluated", "actual_return": 5.1, "hit": True},
-        {"ts": "2026-06-08 22:18", "symbol": "KO", "direction": "up", "base_price": 66.5, "horizon": 21, "status": "evaluated", "actual_return": -3.9, "hit": False},
+        {"ts": "2026-06-08 22:18", "symbol": "KO", "direction": "up", "base_price": 66.5, "horizon": 21, "status": "evaluated", "actual_return": -3.9, "hit": False,
+         "miss_reason": "기간 중 부정 이슈(2026-06-19): 원가 부담 마진 압박 · 신흥국 판매량 둔화"},
         {"ts": "2026-06-05 21:03", "symbol": "V", "direction": "down", "base_price": 298.0, "horizon": 21, "status": "evaluated", "actual_return": -2.4, "hit": True},
-        {"ts": "2026-06-02 21:31", "symbol": "069500", "direction": "up", "base_price": 43600, "horizon": 21, "status": "evaluated", "actual_return": -4.3, "hit": False},
+        {"ts": "2026-06-02 21:31", "symbol": "069500", "direction": "up", "base_price": 43600, "horizon": 21, "status": "evaluated", "actual_return": -4.3, "hit": False,
+         "miss_reason": "실제 변동이 작지 않은데 뚜렷한 이슈 미포착 — 시장 전체 조정 영향으로 추정"},
         {"ts": "2026-06-01 20:47", "symbol": "VOO", "direction": "up", "base_price": 498.9, "horizon": 21, "status": "evaluated", "actual_return": 3.0, "hit": True},
     ],
     "log": [

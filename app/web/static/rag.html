@@ -95,6 +95,7 @@
       → 건별 기록은 <b>✅ 채점 내역</b> 탭에, 그 <b>누적 통계가 바로 이 화면</b>입니다.
       <br>· <b>방향 적중률</b> = 오른다/내린다 베팅이 맞은 비율(50%대면 동전던지기 수준 → 예측은 참고만)
       · <b>범위 적중률</b> = 실제 가격이 예측 밴드(P10~P90) 안에 들어온 비율(높으면 변동폭 추정은 쓸만).</div>
+    <div id="vf-verdict"></div>
     <div class="big" id="vf-sum"></div>
     <div id="vf-bysym"></div>
   </div>
@@ -192,6 +193,25 @@ async function loadVerify(){
   if(!op&&!ev){$('vf-st').textContent='실패';return;}
   op=op||[]; ev=ev||[];
   $('vf-st').textContent=`채점 ${(a&&a.evaluated)||ev.length}건 · 대기 ${op.length}건`;
+  // 🧭 판정 박스 — 뭘 먼저, 무슨 기준으로 읽는지(우선순위+기준선+현재값 판정+결론)
+  if(a&&a.evaluated){
+    const d100=Math.round(a.dir_acc*100), b100=Math.round(a.band_acc*100), n=a.evaluated;
+    const dj=a.dir_acc>=0.55?['🟢 쓸만함','var(--up)']:a.dir_acc>=0.45?['🟡 동전 수준 → 참고만','#eab452']:['🔴 역지표 주의','var(--down)'];
+    const bj=a.band_acc>=0.8?['🟢 신뢰 가능','var(--up)']:['🔴 기준선 미달','var(--down)'];
+    const nj=n>=1000?['🟢 충분','var(--up)']:['🟡 부족(1,000건↑ 권장)','#eab452'];
+    const concl=a.dir_acc>=0.55
+      ?'방향 예측을 보조신호로 써볼 수 있어요. 그래도 매매의 중심은 규칙(분산·밴드·손절)입니다.'
+      :'방향 예측은 참고만 — 매매는 규칙(분산·밴드·손절)으로 하고, 예측은 변동폭(리스크) 가늠용으로 쓰세요.';
+    $('vf-verdict').innerHTML=`<div class="help-box" style="border-left:3px solid #4c8dff">
+      <b class="k">🧭 읽는 법 — 이 순서로 보세요</b><br>
+      <b>1순위 표본</b> ${n.toLocaleString()}건 → <span style="color:${nj[1]};font-weight:700">${nj[0]}</span>
+        <span class="mut">(기준: 1,000건↑부터 통계를 믿을 수 있음)</span><br>
+      <b>2순위 방향 적중률</b> ${d100}% → <span style="color:${dj[1]};font-weight:700">${dj[0]}</span>
+        <span class="mut">(기준: 55%↑ 쓸만 · 45~55% 동전던지기 · 45%↓ 역지표)</span><br>
+      <b>3순위 범위 적중률</b> ${b100}% → <span style="color:${bj[1]};font-weight:700">${bj[0]}</span>
+        <span class="mut">(기준: 80%↑ — P10~P90 밴드의 이론 기준선)</span><br>
+      <b>→ 결론:</b> ${concl}</div>`;
+  }else $('vf-verdict').innerHTML='';
   if(a&&a.evaluated){
     $('vf-sum').innerHTML=`<div><div class="k">방향 적중률</div><div class="val ${a.dir_acc>=0.5?'up':'down'}">${Math.round(a.dir_acc*100)}%</div></div>`
      +`<div><div class="k">범위 적중률</div><div class="val">${Math.round(a.band_acc*100)}%</div></div>`
@@ -340,7 +360,8 @@ async function loadChat(){
     const res=c.status==='evaluated'?`→ 실제 <span class="${cls(c.actual_return)}">${pct(c.actual_return)}</span> ${c.hit?'<span class="tag hit">적중</span>':'<span class="tag miss">빗나감</span>'}`:'<span class="mut">채점 대기</span>';
     return `<div class="row"><div class="row-l"><div class="row-t"><span class="sym">${c.symbol}</span>${nm(c.symbol)}
         <span class="tag ${up?'up':'down'}">${up?'▲매수/상승':'▼매도/하락'}</span></div>
-      <div class="row-s num">${(c.ts||'').slice(0,10)} · 당시 ${nf(c.base_price)} ${res}</div></div></div>`;}).join('')):'';
+      <div class="row-s num">${(c.ts||'').slice(0,10)} · 당시 ${nf(c.base_price)} ${res}</div>
+      ${(c.status==='evaluated'&&!c.hit&&c.miss_reason)?`<div class="row-s" style="white-space:normal;line-height:1.45;color:#c9a86a">💡 ${esc(c.miss_reason)}</div>`:''}</div></div>`;}).join('')):'';
   $('ce-log').innerHTML=log.length?log.slice(0,30).map(l=>{
     const q=l.user_msg||l.q||'', a=l.reply||l.a||'', u=l.usage||{};
     const tok=(u.total!=null)?`토큰 ${u.total} (입력 ${u.prompt!=null?u.prompt:'?'}·출력 ${u.completion!=null?u.completion:'?'})`:'토큰 정보 없음';
