@@ -294,8 +294,15 @@ def _compute_sentiment(symbol: str, market: str = "US",
             conf = min(1.0, len(signed) / 8) * agree
             engine = "FinBERT" + ("+Groq필터" if idx else "")
         else:
-            score, conf, kw = _keyword_score(relevant)
-            engine = "키워드(폴백)"
+            # FinBERT 불가(HF 402 크레딧 소진 등) → Groq 채점 폴백 → 키워드(최후)
+            from bot.sentiment import groq_sent_score
+            gs = groq_sent_score(symbol, [i.headline for i in relevant])
+            if gs:
+                score, conf = gs
+                engine = "Groq(FinBERT 폴백)"
+            else:
+                score, conf, kw = _keyword_score(relevant)
+                engine = "키워드(폴백)"
 
     # 주목할 이슈 있을 때만 요약(없으면 빈값→화면서 숨김). 밋밋한 메타 폴백 제거.
     # ETF 구성종목(need_summary=False)은 점수만 쓰므로 요약 LLM 생략 → ETF 룩스루 대폭 단축.

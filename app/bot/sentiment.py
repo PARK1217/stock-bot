@@ -58,6 +58,9 @@ def _finbert_hf_one(text: str) -> list[dict] | None:
             if r.status_code == 503:
                 time.sleep(2 * (attempt + 1))
                 continue
+            if r.status_code == 402:                      # HF 크레딧 소진 — 재시도 무의미
+                alert_model_error(f"HF:{settings.hf_finbert_model}", 402)
+                return None
             r.raise_for_status()
             data = r.json()
         except (httpx.HTTPError, ValueError) as e:
@@ -85,6 +88,9 @@ def _finbert_hf(texts: list[str]) -> list[tuple[str, float]] | None:
             if r.status_code == 503:                      # 모델 콜드로딩
                 time.sleep(2 * (attempt + 1))
                 continue
+            if r.status_code == 402:                      # HF 크레딧 소진 — 순차 폴백도 무의미
+                alert_model_error(f"HF:{settings.hf_finbert_model}", 402)
+                return None
             r.raise_for_status()
             data = r.json()
             break
@@ -137,7 +143,9 @@ def alert_model_error(model: str, status: int) -> None:
             return
         r.set(k, "1", ex=86400)
         from bot.notify import notify
-        what = "서비스 종료 가능성 — 모델 교체 필요" if status == 404 else "키/권한 확인 필요"
+        what = ("서비스 종료 가능성 — 모델 교체 필요" if status == 404
+                else "크레딧/결제 한도 소진 — 충전 전까지 폴백 사용" if status == 402
+                else "키/권한 확인 필요")
         notify(f"⚠️ [LLM] '{model}' 영구오류 {status} — {what} (폴백으로 동작 중)")
     except Exception:  # noqa: BLE001
         pass
@@ -209,12 +217,12 @@ def groq_relevant_indices(symbol: str, headlines: list[str]) -> list[int] | None
 
 
 def groq_sent_score(symbol: str, headlines: list[str]) -> tuple[float, float] | None:
-    """한국어 헤드라인 감성 채점(KR 전용, 2026-10-21 KR 뉴스 보강) — FinBERT가 영어 전용이라
-    KR은 Groq(한국어 OK)로 score/confidence JSON 채점. 실패 시 None(한글 키워드 폴백)."""
+    """헤드라인 감성 채점(Groq JSON) — KR 기본 채점기(FinBERT가 영어 전용) +
+    US에선 HF FinBERT 402(크레딧 소진) 등 실패 시 폴백(2026-10-22). 실패 시 None(키워드 폴백)."""
     if not (settings.groq_api_key or settings.mistral_api_key) or not headlines:
         return None
     heads = "\n".join(f"- {h}" for h in headlines[:15])
-    prompt = (f"다음은 한국 종목 '{symbol}'의 최근 뉴스 헤드라인이다. 주가 관점의 종합 감성을 "
+    prompt = (f"다음은 종목 '{symbol}'의 최근 뉴스 헤드라인이다. 주가 관점의 종합 감성을 "
               'JSON으로만 답하라: {"score": -1~1 실수, "confidence": 0~1 실수}. 다른 말 금지.\n'
               f"{heads}")
     txt = _llm_chat(prompt, 60, model=settings.groq_summary_model)
